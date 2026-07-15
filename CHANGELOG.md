@@ -6,6 +6,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- Release workflow no longer attaches a stray `dist/.gitignore` asset; it now
+  uploads only the built wheel and sdist.
+
 ## [0.1.0] - 2026-07-15
 
 ### Added

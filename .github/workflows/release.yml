@@ -55,5 +55,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
-          files: dist/*
+          # Only the built distributions — uv drops a dist/.gitignore that a
+          # bare dist/* glob would otherwise attach as a stray asset.
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
           generate_release_notes: true
