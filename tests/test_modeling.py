@@ -55,6 +55,15 @@ def test_count_tokens_fallback() -> None:
     assert count_tokens("hello world foo") >= 1
 
 
+def test_count_tokens_matches_tiktoken() -> None:
+    # Only runs when the `nlp` extra is installed; verifies the accurate path
+    # (not just the whitespace fallback) is used when tiktoken is available.
+    tiktoken = pytest.importorskip("tiktoken")
+    encoding = tiktoken.get_encoding("cl100k_base")
+    text = "Tokenization isn't the same as splitting on spaces."
+    assert count_tokens(text) == len(encoding.encode(text))
+
+
 def test_set_theme_applies_palette() -> None:
     set_theme("talk")
     assert mpl.rcParams["axes.spines.top"] is False

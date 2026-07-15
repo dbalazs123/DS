@@ -52,3 +52,23 @@ jobs:
 
       - name: Test (pytest, with coverage gate)
         run: uv run pytest
+
+  # The default `test` job installs only the lean core, so the optional extras
+  # (and the code paths that depend on them) never run. This job installs
+  # everything and re-runs the suite, exercising e.g. the tiktoken-backed token
+  # counter instead of only its dependency-free fallback.
+  test-extras:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install dependencies (all extras)
+        run: uv sync --extra all
+
+      - name: Test (pytest, with coverage gate)
+        run: uv run pytest
