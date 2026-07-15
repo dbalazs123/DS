@@ -55,9 +55,11 @@ df = drop_constant_columns(df)      # drop columns with a single value
 ### Explore — `ds.eda`
 
 ```python
-from ds.eda import summarize
+from ds.eda import missing_value_report, summarize, top_correlations
 
-summary = summarize(df)   # per-column dtype, null counts, cardinality, stats
+summarize(df)              # per-column dtype, null counts, cardinality, stats
+missing_value_report(df)   # just the columns with gaps, worst first
+top_correlations(df, n=5)  # most correlated numeric pairs (redundancy / leakage)
 ```
 
 ### Feature — `ds.features`
@@ -93,10 +95,17 @@ count_tokens("how many tokens is this?")
 ### Evaluate — `ds.evaluation`
 
 ```python
-from ds.evaluation import classification_metrics, regression_metrics
+from ds.evaluation import (
+    classification_metrics,
+    confusion_frame,
+    per_class_metrics,
+    regression_metrics,
+)
 
 regression_metrics(y_true, y_pred)       # mae, rmse, r2
-classification_metrics(y_true, y_pred)   # accuracy, precision, recall, f1
+classification_metrics(y_true, y_pred)   # accuracy, precision, recall, f1 (averaged)
+confusion_frame(y_true, y_pred)          # labeled confusion matrix (true x predicted)
+per_class_metrics(y_true, y_pred)        # precision/recall/f1/support per class
 ```
 
 ### Visualize — `ds.viz`

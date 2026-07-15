@@ -36,10 +36,10 @@ tests/         Test suite mirroring src/ds/
 | Acquire | `ds.io` | `load_table`, `save_table` |
 | Validate | `ds.validation` | `require_columns`, `assert_no_nulls` |
 | Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns` |
-| Explore | `ds.eda` | `summarize` |
+| Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
 | Feature | `ds.features` | `add_datetime_features` |
 | Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `count_tokens` |
-| Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics` |
+| Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics` |
 | Visualize | `ds.viz` | `set_theme` |
 
 Cross-cutting: `ds.config`, `ds.logging`, `ds.reproducibility`.

@@ -7,6 +7,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `ds.eda`: `missing_value_report` (columns with gaps, ranked) and
+  `top_correlations` (most-correlated numeric pairs, for redundancy/leakage
+  screening).
+- `ds.evaluation`: `confusion_frame` (labeled confusion matrix) and
+  `per_class_metrics` (per-class precision/recall/f1/support).
 - `ds` command-line interface (`ds version`, `ds new <name>`); `ds new`
   scaffolds a project from the Copier template.
 - CI now runs a `test-extras` job that adds the lightweight `tiktoken`
