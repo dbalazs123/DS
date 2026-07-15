@@ -44,9 +44,7 @@ def test_new_scaffolds_project(
     assert "Created" in capsys.readouterr().out
 
 
-def test_new_refuses_existing_directory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_new_refuses_existing_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli, "TEMPLATE_DIR", TEMPLATE_DIR)
     (tmp_path / "projects" / "taken").mkdir(parents=True)
