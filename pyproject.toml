@@ -110,7 +110,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
-addopts = "-ra --strict-markers --cov=ds --cov-report=term-missing"
+addopts = "-ra --strict-markers --cov=ds --cov-report=term-missing --cov-fail-under=85"
 
 [tool.coverage.run]
 source = ["ds"]

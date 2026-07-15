@@ -16,3 +16,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   project template under `templates/`, and `notebooks/` + git-ignored `data/`.
 - Documentation site (`mkdocs-material` + `mkdocstrings`) and contributor docs.
 - Continuous-improvement config: pre-commit hooks, Dependabot, issue/PR templates.
+- CI hardening: `pre-commit`-driven lint/type job, an enforced coverage gate
+  (`--cov-fail-under`), a GitHub Pages docs-deploy workflow, and a tag-triggered
+  release workflow that builds the package and publishes a GitHub Release.
