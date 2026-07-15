@@ -12,6 +12,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   screening).
 - `ds.evaluation`: `confusion_frame` (labeled confusion matrix) and
   `per_class_metrics` (per-class precision/recall/f1/support).
+- `ds.viz` plotting helpers that return a matplotlib `Axes`: `plot_missingness`,
+  `plot_confusion_matrix` and `plot_residuals` (the first two visualize
+  `missing_value_report` and `confusion_frame`).
 - `ds` command-line interface (`ds version`, `ds new <name>`); `ds new`
   scaffolds a project from the Copier template.
 - CI now runs a `test-extras` job that adds the lightweight `tiktoken`
