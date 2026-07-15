@@ -9,10 +9,13 @@ from a checkout of the DS repository (it needs ``templates/`` and Copier).
 from __future__ import annotations
 
 import argparse
+import re
 from collections.abc import Sequence
 from pathlib import Path
 
 from ds import __version__
+
+_NON_SLUG = re.compile(r"[^0-9a-z]+")
 
 # Resolved relative to the current working directory: `ds new` is meant to be
 # run from the repository root, the same as the raw `copier copy` command.
@@ -21,8 +24,14 @@ PROJECTS_DIR = Path("projects")
 
 
 def _slugify(name: str) -> str:
-    """Convert a project name into a directory- and import-safe slug."""
-    return name.strip().lower().replace(" ", "_").replace("-", "_")
+    """Convert a project name into a directory- and import-safe slug.
+
+    Any run of characters that isn't a lowercase letter or digit collapses to a
+    single underscore, so the result is always a safe single path segment (no
+    ``/``, ``.`` or other separators that could escape ``projects/``). Returns
+    an empty string when ``name`` has no usable characters.
+    """
+    return _NON_SLUG.sub("_", name.strip().lower()).strip("_")
 
 
 def _cmd_version(_: argparse.Namespace) -> int:
@@ -43,6 +52,10 @@ def _cmd_new(args: argparse.Namespace) -> int:
         return 1
 
     slug = _slugify(args.name)
+    if not slug:
+        print(f"'{args.name}' has no usable characters for a project name.")
+        return 1
+
     destination = PROJECTS_DIR / slug
     if destination.exists():
         print(f"'{destination}' already exists — choose another name or remove it first.")

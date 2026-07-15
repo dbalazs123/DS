@@ -27,6 +27,23 @@ def test_slugify() -> None:
     assert cli._slugify("time-series demo") == "time_series_demo"
 
 
+def test_slugify_strips_path_and_punctuation() -> None:
+    # No separators survive, so a slug is always a single safe path segment.
+    assert cli._slugify("../evil") == "evil"
+    assert cli._slugify("a/b.c") == "a_b_c"
+    assert cli._slugify("my.project") == "my_project"
+    assert cli._slugify("   ") == ""
+
+
+def test_new_rejects_name_without_usable_characters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "TEMPLATE_DIR", TEMPLATE_DIR)
+    assert cli.main(["new", "!!!"]) == 1
+    assert not (tmp_path / "projects").exists()
+
+
 def test_new_scaffolds_project(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
