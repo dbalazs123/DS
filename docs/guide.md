@@ -111,10 +111,23 @@ per_class_metrics(y_true, y_pred)        # precision/recall/f1/support per class
 ### Visualize — `ds.viz`
 
 ```python
-from ds.viz import set_theme
+from ds.viz import (
+    plot_confusion_matrix,
+    plot_missingness,
+    plot_residuals,
+    set_theme,
+)
 
-set_theme("notebook")   # consistent matplotlib theme + palette
+set_theme("notebook")                    # consistent matplotlib theme + palette
+plot_missingness(df)                     # bar chart of missing fractions
+plot_confusion_matrix(y_true, y_pred)    # annotated heatmap
+plot_residuals(y_true, y_pred)           # residual-vs-predicted diagnostic
 ```
+
+Each plot returns a matplotlib `Axes` and accepts an existing `ax=`, so they
+compose into multi-panel figures. They pair with the `ds.eda` and
+`ds.evaluation` helpers (`plot_missingness` visualizes `missing_value_report`,
+`plot_confusion_matrix` visualizes `confusion_frame`).
 
 ### Cross-cutting
 
