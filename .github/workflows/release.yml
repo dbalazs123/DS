@@ -1,8 +1,16 @@
 name: Release
 
 on:
+  # Cut a release by pushing a SemVer tag...
   push:
     tags: ["v*.*.*"]
+  # ...or manually from the Actions tab / GitHub mobile app.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag to release (e.g. v0.1.0)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -12,6 +20,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Manual runs create and push the tag using the workflow's GITHUB_TOKEN.
+      # A tag pushed by GITHUB_TOKEN does not re-trigger the push-tags event,
+      # so there is no double release run.
+      - name: Create and push tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "$VERSION"
+          git push origin "$VERSION"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -31,5 +54,6 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
           files: dist/*
           generate_release_notes: true
