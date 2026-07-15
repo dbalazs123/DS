@@ -1,17 +1,57 @@
-"""{{ project_name }} — {{ description }}"""
+"""{{ project_name }} — {{ description }}
+
+A stage-by-stage skeleton built on the shared ``ds`` toolkit. Each numbered
+step maps to one lifecycle module; fill them in for this analysis. The body is
+runnable as-is (it just logs) so you always have a green starting point.
+
+See ``projects/_example/pipeline.py`` for every stage worked end to end.
+
+Run it with::
+
+    uv run python projects/{{ project_slug }}/pipeline.py
+"""
 
 from __future__ import annotations
 
-from ds import get_logger, seed_everything
+from pathlib import Path
+
+from ds import get_logger, get_settings, seed_everything
 
 logger = get_logger(__name__)
 
 
-def main() -> None:
+def run(output_dir: Path) -> dict[str, float]:
+    """Run the {{ project_slug }} pipeline end to end.
+
+    Args:
+        output_dir: Directory to write artifacts (figures, tables) into.
+
+    Returns:
+        Evaluation metrics for the run.
+    """
     seed_everything()
-    logger.info("Starting {{ project_slug }}")
-    # TODO: load -> validate -> clean -> feature -> model -> evaluate -> visualize
-    # See projects/_example/pipeline.py for a fully worked reference.
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Acquire   — load raw inputs (ds.io.load_table) from settings.raw_dir.
+    # 2. Validate  — assert the columns/shape you depend on (ds.validation).
+    # 3. Clean     — standardize names, drop constants (ds.preprocessing).
+    # 4. Feature   — engineer columns (ds.features).
+    # 5. Split     — train/test, chronologically if time-ordered (ds.modeling).
+    # 6. Model     — fit an estimator.
+    # 7. Evaluate  — compute metrics (ds.evaluation).
+    # 8. Visualize — save figures under output_dir (ds.viz).
+
+    metrics: dict[str, float] = {}
+    logger.info("Finished %s: %s", "{{ project_slug }}", metrics)
+    return metrics
+
+
+def main() -> None:
+    settings = get_settings()
+    metrics = run(settings.processed_dir / "{{ project_slug }}")
+    print("Pipeline finished. Metrics:")
+    for name, value in metrics.items():
+        print(f"  {name}: {value:,.3f}")
 
 
 if __name__ == "__main__":

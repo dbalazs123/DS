@@ -16,6 +16,10 @@ Individual analyses and experiments live here — one directory per project. The
 uv run copier copy templates/project projects/my-analysis
 ```
 
+This generates a `pipeline.py` skeleton (one section per lifecycle stage), a
+`notebooks/` folder, and a `tests/` folder. Run the project's tests with
+`uv run pytest projects/my-analysis --no-cov`.
+
 ## Example
 
 [`_example/`](_example/) is a worked, runnable pipeline that touches every stage
