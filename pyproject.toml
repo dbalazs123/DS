@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ds"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Data science toolkit for every situation."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -66,6 +66,10 @@ dev = [
     "pandas-stubs>=2.2",
     "copier>=9.3",
 ]
+
+# Single source of truth for the version: __version__ in src/ds/__init__.py.
+[tool.hatch.version]
+path = "src/ds/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ds"]

@@ -19,6 +19,13 @@ repos:
         args: ["--fix"]
       - id: ruff-format
 
+  # Strip notebook outputs before they land in git: no bloated diffs, no
+  # accidentally-committed data. notebooks/ is a first-class folder here.
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.7.1
+    hooks:
+      - id: nbstripout
+
   # Run mypy through uv so it type-checks against the real project environment
   # (pandas-stubs, sklearn, etc.) rather than an isolated, partial one.
   - repo: local

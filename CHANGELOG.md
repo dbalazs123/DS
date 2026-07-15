@@ -6,6 +6,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Project template now scaffolds a stage-by-stage `pipeline.py` skeleton, a
+  per-project `notebooks/` folder, and a `tests/` folder with a starter test.
+- `tests/test_example.py` runs the worked `_example` pipeline end to end so a
+  regression in any lifecycle stage fails CI.
+- `nbstripout` pre-commit hook to strip notebook outputs before they reach git.
+
+### Changed
+- Package version is now single-sourced from `__version__` in
+  `src/ds/__init__.py` via Hatch's dynamic version, instead of being duplicated
+  in `pyproject.toml`.
+- CLAUDE.md branching guidance no longer hard-codes a (stale) branch name.
+
 ### Fixed
 - Release workflow no longer attaches a stray `dist/.gitignore` asset; it now
   uploads only the built wheel and sdist.

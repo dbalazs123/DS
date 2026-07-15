@@ -22,6 +22,8 @@ from ds.config import Settings, get_settings
 from ds.logging import get_logger
 from ds.reproducibility import seed_everything
 
+# Single source of truth for the package version; Hatch reads it at build time
+# (see [tool.hatch.version] in pyproject.toml).
 __version__ = "0.1.0"
 
 __all__ = [
