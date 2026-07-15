@@ -60,8 +60,9 @@ uv sync --extra all          # everything
 workflow and conventions. CI runs pre-commit (ruff + mypy) and the test suite
 with an enforced coverage gate on every push and PR.
 
-**Docs** are built with `make docs` and published to GitHub Pages on every push
-to `master`.
+**Docs** are built with `make docs` locally. CI builds them with `--strict` on
+every push/PR and uploads the rendered site as a downloadable workflow artifact
+(no paid plan or GitHub Pages required).
 
 **Releases** are cut by pushing a SemVer tag; CI builds the package and creates
 the GitHub Release:

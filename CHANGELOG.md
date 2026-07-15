@@ -17,5 +17,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Documentation site (`mkdocs-material` + `mkdocstrings`) and contributor docs.
 - Continuous-improvement config: pre-commit hooks, Dependabot, issue/PR templates.
 - CI hardening: `pre-commit`-driven lint/type job, an enforced coverage gate
-  (`--cov-fail-under`), a GitHub Pages docs-deploy workflow, and a tag-triggered
-  release workflow that builds the package and publishes a GitHub Release.
+  (`--cov-fail-under`), a strict docs build that uploads the rendered site as a
+  workflow artifact (no paid plan required), and a tag-triggered release workflow
+  that builds the package and publishes a GitHub Release.

@@ -3,26 +3,17 @@ name: Docs
 on:
   push:
     branches: ["master"]
+  pull_request:
+    branches: ["master"]
   # Allow manual runs from the Actions tab.
   workflow_dispatch:
 
-# Grant the token the permissions Pages deployment needs.
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-# Allow only one concurrent deployment; don't cancel an in-progress one.
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -34,14 +25,15 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      # Strict build doubles as a docs test: broken references fail CI.
       - name: Build docs
         run: uv run mkdocs build --strict
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      # Publish the rendered site as a downloadable artifact. This works on the
+      # free plan for public and private repos alike — no GitHub Pages required.
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v4
         with:
+          name: site
           path: site
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          retention-days: 30
