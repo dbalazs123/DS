@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-15
+
 ### Added
 - Initial toolkit scaffold: `uv` packaging, `ruff` + `mypy --strict` + `pytest`
   tooling, and GitHub Actions CI.
@@ -18,5 +20,5 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Continuous-improvement config: pre-commit hooks, Dependabot, issue/PR templates.
 - CI hardening: `pre-commit`-driven lint/type job, an enforced coverage gate
   (`--cov-fail-under`), a strict docs build that validates on PRs and deploys to
-  GitHub Pages on `master`, and a tag-triggered release workflow that builds the
-  package and publishes a GitHub Release.
+  GitHub Pages on `master`, and a release workflow (tag push or manual
+  `workflow_dispatch`) that builds the package and publishes a GitHub Release.
