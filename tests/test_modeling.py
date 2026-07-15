@@ -6,7 +6,12 @@ import matplotlib as mpl
 import pandas as pd
 import pytest
 
-from ds.evaluation import classification_metrics, regression_metrics
+from ds.evaluation import (
+    classification_metrics,
+    confusion_frame,
+    per_class_metrics,
+    regression_metrics,
+)
 from ds.modeling.nlp import count_tokens
 from ds.modeling.tabular import split_features_target
 from ds.modeling.timeseries import train_test_split_by_time
@@ -48,6 +53,22 @@ def test_classification_metrics_perfect() -> None:
     m = classification_metrics([0, 1, 1], [0, 1, 1])
     assert m["accuracy"] == 1.0
     assert m["f1"] == 1.0
+
+
+def test_confusion_frame_labels_axes() -> None:
+    cm = confusion_frame([0, 1, 1, 0], [0, 1, 0, 0])
+    assert cm.index.name == "true"
+    assert cm.columns.name == "predicted"
+    assert cm.loc[0, 0] == 2  # both true-0 samples predicted 0
+    assert cm.loc[1, 0] == 1  # one true-1 sample predicted 0
+
+
+def test_per_class_metrics_breaks_out_each_label() -> None:
+    frame = per_class_metrics([0, 1, 1], [0, 1, 1])
+    assert set(frame.columns) == {"precision", "recall", "f1", "support"}
+    assert frame.index.name == "label"
+    assert frame.loc[1, "support"] == 2
+    assert frame.loc[1, "f1"] == 1.0
 
 
 def test_count_tokens_fallback() -> None:
