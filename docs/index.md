@@ -29,4 +29,8 @@ uv run python projects/_example/pipeline.py   # run the worked example
 
 Cross-cutting: `ds.config`, `ds.logging`, `ds.reproducibility`.
 
-See the [API Reference](api.md) for the full, auto-generated documentation.
+## Next steps
+
+- The [Guide](guide.md) walks through each stage with copy-pasteable recipes and
+  how to scaffold a new project.
+- The [API Reference](api.md) has the full, auto-generated documentation.

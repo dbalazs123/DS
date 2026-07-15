@@ -7,6 +7,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `ds` command-line interface (`ds version`, `ds new <name>`); `ds new`
+  scaffolds a project from the Copier template.
+- CI now runs a `test-extras` job that installs all optional extras and re-runs
+  the suite, exercising extra-backed code paths (e.g. the tiktoken token
+  counter) instead of only their fallbacks.
+- Documentation `Guide` page: a per-stage cookbook and the new-project workflow.
 - Project template now scaffolds a stage-by-stage `pipeline.py` skeleton, a
   per-project `notebooks/` folder, and a `tests/` folder with a starter test.
 - `tests/test_example.py` runs the worked `_example` pipeline end to end so a
