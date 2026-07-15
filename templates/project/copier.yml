@@ -1,0 +1,17 @@
+# Copier template for a new DS project.
+# Usage: uv run copier copy templates/project projects/<name>
+_subdirectory: "template"
+
+project_name:
+  type: str
+  help: Human-readable project name
+
+project_slug:
+  type: str
+  help: Directory / import-safe name
+  default: "{{ project_name | lower | replace(' ', '_') | replace('-', '_') }}"
+
+description:
+  type: str
+  help: One-line description of the project
+  default: ""
