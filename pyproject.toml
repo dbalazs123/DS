@@ -49,8 +49,8 @@ timeseries = [
 all = ["ds[nlp,timeseries]"]
 
 [project.urls]
-Homepage = "https://github.com/dbalazs123/ds"
-Repository = "https://github.com/dbalazs123/ds"
+Homepage = "https://github.com/BudSpencR/DS"
+Repository = "https://github.com/BudSpencR/DS"
 
 # Developer tooling lives in a dependency group so `uv sync` installs it by
 # default for contributors but it is never shipped to consumers of the library.
