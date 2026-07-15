@@ -6,45 +6,61 @@ Guidance for AI assistants (Claude Code and others) working in this repository.
 
 **DS** — "Data science toolkit for every situation."
 
-The project is at its earliest stage. As of this writing the repository contains
-only `README.md`; there is no source code, package layout, tests, or build
-tooling committed yet. Treat this file as the seed of the codebase conventions,
-and **keep it updated as real structure lands** — when you add the first package,
-dependency manifest, or test suite, revise the relevant sections here in the same
-change.
+DS is a **hybrid workspace**: a reusable library (`src/ds/`) organized by
+data-science *process*, a `projects/` area for individual analyses that consume
+the library, and a `templates/` scaffold for new projects. Keep this file honest
+— when structure, tooling, or commands change, update the matching section here
+in the **same** change.
 
 ## Current state of the repository
 
 ```
 .
-├── README.md      # One-line project description
-└── CLAUDE.md      # This file
+├── pyproject.toml         # PEP 621 metadata + deps + tool config (uv, ruff, mypy, pytest)
+├── Makefile               # thin task wrappers (make help)
+├── src/ds/                # reusable library, organized by DS process
+│   ├── config.py logging.py reproducibility.py   # cross-cutting
+│   ├── io/ validation/ preprocessing/ eda/ features/
+│   ├── modeling/          # tabular.py timeseries.py nlp.py
+│   ├── evaluation/ viz/ utils/
+│   └── py.typed
+├── projects/              # analyses/experiments (see _example/pipeline.py)
+├── templates/project/     # copier template for new projects
+├── notebooks/             # exploratory notebooks
+├── data/                  # git-ignored: raw/ interim/ processed/
+├── docs/                  # mkdocs-material + mkdocstrings
+├── tests/                 # mirrors src/ds/
+└── .github/workflows/ci.yml
 ```
 
-There is no `pyproject.toml`, `requirements.txt`, `setup.py`, `src/` tree, test
-directory, CI config, or linter config yet. Do not reference or assume any of
-these exist until they do. If a task depends on one of them, create it as part
-of the task rather than pretending it is already there.
+## Tooling & commands (verified)
 
-## Establishing conventions (when adding the first code)
+- **Packaging / env:** `uv` (build backend: hatchling). Lean core deps; heavy
+  domain stacks live in optional extras `nlp` and `timeseries`. Dev tools are in
+  the `dev` dependency group (installed by `uv sync`).
+- **Layout:** `src/ds/` package with `py.typed`; public API re-exported from
+  `src/ds/__init__.py`.
+- **Tests:** `pytest` under `tests/`, with coverage on `ds`.
+- **Lint/format:** `ruff`. **Types:** `mypy` in `--strict` mode.
+- **Notebooks:** in `notebooks/`, never mixed into `src/ds/`.
 
-The name signals a Python data science library. Nothing is locked in, so when you
-create the initial project scaffolding, prefer these widely-used defaults unless
-the user asks otherwise, and record what you chose back in this file:
+Commands a contributor runs:
 
-- **Packaging:** a `pyproject.toml` (PEP 621) as the single source of project
-  metadata and dependencies. Pick one build/dependency tool (e.g. `uv`, `poetry`,
-  or plain `pip` + `venv`) and note the choice here so it stays consistent.
-- **Layout:** a `src/`-based package (`src/ds/`) to avoid import-path surprises,
-  with `__init__.py` exposing the public API.
-- **Tests:** `pytest`, with tests under `tests/` mirroring the package tree.
-- **Formatting & linting:** `ruff` (lint + format) and `mypy` for type checking.
-  Add configuration to `pyproject.toml`.
-- **Notebooks:** if example or exploratory notebooks are added, keep them in a
-  `notebooks/` or `examples/` directory, not mixed into the package source.
+```bash
+uv sync            # create env, install ds + dev tools
+make check         # lint + typecheck + test (what CI runs)
+make lint          # uv run ruff check .
+make format        # uv run ruff format . && ruff check --fix .
+make typecheck     # uv run mypy
+make test          # uv run pytest
+make docs          # uv run mkdocs build
+```
 
-Once these exist, replace this section with the actual, verified commands
-(install, test, lint, typecheck) that a contributor runs.
+When adding a utility, place it in the module for its lifecycle stage, give it a
+Google-style docstring and full type hints (the codebase is `mypy --strict`), add
+a mirroring test, and export it from the module's `__all__`. Heavy dependencies
+go in the right extra and must degrade gracefully when absent (see
+`src/ds/modeling/nlp.py`).
 
 ## Development workflow
 
@@ -68,9 +84,8 @@ Active development for this task happens on the branch **`claude/claude-md-docs-
 
 ## Conventions for AI assistants
 
-- **Do not invent structure.** This repository is nearly empty; describe and act
-  on what actually exists. Verify with `git ls-files` / `find` before claiming a
-  file or module is present.
+- **Do not invent structure.** Describe and act on what actually exists. Verify
+  with `git ls-files` / `find` before claiming a file or module is present.
 - **Keep this file honest.** When you add code, tooling, or workflows, update the
   matching section here in the same change so the documentation never drifts ahead
   of (or behind) reality.

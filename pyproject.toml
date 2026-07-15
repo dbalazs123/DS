@@ -1,0 +1,117 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ds"
+version = "0.1.0"
+description = "Data science toolkit for every situation."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Balazs Dejczo", email = "balazs.dejczo@gmail.com" }]
+keywords = ["data-science", "machine-learning", "toolkit"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+]
+
+# Lean core: the utilities every DS process relies on. Domain-heavy stacks
+# live in the optional extras below so the default install stays fast.
+dependencies = [
+    "pandas>=2.2",
+    "polars>=1.0",
+    "pyarrow>=16.0",
+    "numpy>=1.26",
+    "scikit-learn>=1.5",
+    "pandera>=0.20",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "matplotlib>=3.9",
+]
+
+[project.optional-dependencies]
+# NLP / LLM work. Install with:  uv sync --extra nlp
+nlp = [
+    "tiktoken>=0.7",
+    "sentence-transformers>=3.0",
+    "anthropic>=0.40",
+]
+# Time-series / forecasting. Install with:  uv sync --extra timeseries
+timeseries = [
+    "statsmodels>=0.14",
+    "sktime>=0.30",
+]
+# Everything, for a full workstation setup.
+all = ["ds[nlp,timeseries]"]
+
+[project.urls]
+Homepage = "https://github.com/dbalazs123/ds"
+Repository = "https://github.com/dbalazs123/ds"
+
+# Developer tooling lives in a dependency group so `uv sync` installs it by
+# default for contributors but it is never shipped to consumers of the library.
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "pre-commit>=3.8",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.25",
+    "pandas-stubs>=2.2",
+    "copier>=9.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ds"]
+
+# ─────────────────────────── Tooling configuration ───────────────────────────
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# A pragmatic, widely-used rule set: pyflakes, pycodestyle, isort, pyupgrade,
+# bugbear, comprehensions, and simplify.
+select = ["E", "F", "I", "UP", "B", "C4", "SIM"]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["ds"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.11"
+packages = ["ds"]
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+# Third-party data libraries ship incomplete type info; don't fail on them.
+[[tool.mypy.overrides]]
+module = [
+    "sklearn.*",
+    "pandera.*",
+    "statsmodels.*",
+    "sktime.*",
+    "tiktoken.*",
+    "torch.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --cov=ds --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["ds"]
+branch = true

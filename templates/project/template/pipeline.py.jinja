@@ -1,0 +1,18 @@
+"""{{ project_name }} — {{ description }}"""
+
+from __future__ import annotations
+
+from ds import get_logger, seed_everything
+
+logger = get_logger(__name__)
+
+
+def main() -> None:
+    seed_everything()
+    logger.info("Starting {{ project_slug }}")
+    # TODO: load -> validate -> clean -> feature -> model -> evaluate -> visualize
+    # See projects/_example/pipeline.py for a fully worked reference.
+
+
+if __name__ == "__main__":
+    main()

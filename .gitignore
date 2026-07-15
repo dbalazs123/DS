@@ -1,0 +1,45 @@
+# Byte-compiled / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Environments
+.venv/
+venv/
+.env
+.python-version.local
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
+.coverage
+htmlcov/
+coverage.xml
+
+# Data & artifacts — ignore contents but keep the directory skeleton (.gitkeep)
+data/**
+!data/**/
+!data/**/.gitkeep
+*.parquet
+*.feather
+*.pkl
+*.joblib
+*.ckpt
+*.pt
+*.onnx
+models/
+mlruns/
+wandb/
+
+# Docs build
+site/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
