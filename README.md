@@ -40,7 +40,7 @@ tests/         Test suite mirroring src/ds/
 | Feature | `ds.features` | `add_datetime_features` |
 | Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `count_tokens` |
 | Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics` |
-| Visualize | `ds.viz` | `set_theme` |
+| Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_confusion_matrix`, `plot_residuals` |
 
 Cross-cutting: `ds.config`, `ds.logging`, `ds.reproducibility`.
 
