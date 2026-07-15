@@ -1,7 +1,7 @@
 site_name: DS Toolkit
 site_description: Data science toolkit for every situation.
-repo_url: https://github.com/dbalazs123/ds
-repo_name: dbalazs123/ds
+repo_url: https://github.com/BudSpencR/DS
+repo_name: BudSpencR/DS
 
 theme:
   name: material
