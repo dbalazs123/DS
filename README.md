@@ -44,6 +44,14 @@ tests/         Test suite mirroring src/ds/
 
 Cross-cutting: `ds.config`, `ds.logging`, `ds.reproducibility`.
 
+## Starting a project
+
+```bash
+ds new "Customer Churn"     # scaffold projects/customer_churn/ (wraps copier)
+```
+
+See the [Guide](docs/guide.md) for a per-stage cookbook and the full workflow.
+
 ## Optional extras
 
 The core install is lean; domain-heavy stacks live behind extras:

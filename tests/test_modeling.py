@@ -55,6 +55,18 @@ def test_count_tokens_fallback() -> None:
     assert count_tokens("hello world foo") >= 1
 
 
+def test_count_tokens_matches_tiktoken() -> None:
+    # Only runs when the `nlp` extra is installed and tiktoken's vocabulary is
+    # reachable; verifies the accurate path (not just the whitespace fallback).
+    tiktoken = pytest.importorskip("tiktoken")
+    try:
+        encoding = tiktoken.get_encoding("cl100k_base")
+    except Exception as exc:  # vocab fetch needs network on first use
+        pytest.skip(f"tiktoken vocabulary unavailable: {exc}")
+    text = "Tokenization isn't the same as splitting on spaces."
+    assert count_tokens(text) == len(encoding.encode(text))
+
+
 def test_set_theme_applies_palette() -> None:
     set_theme("talk")
     assert mpl.rcParams["axes.spines.top"] is False

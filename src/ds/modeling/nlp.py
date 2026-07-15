@@ -27,10 +27,17 @@ def count_tokens(text: str, model: str = "cl100k_base") -> int:
         return len(text.split())
 
     try:
-        encoding = tiktoken.get_encoding(model)
-    except ValueError:
-        encoding = tiktoken.encoding_for_model(model)
-    return len(encoding.encode(text))
+        try:
+            encoding = tiktoken.get_encoding(model)
+        except ValueError:
+            encoding = tiktoken.encoding_for_model(model)
+        return len(encoding.encode(text))
+    except Exception:
+        # tiktoken is installed but the encoding could not be loaded or used
+        # (e.g. the vocabulary download failed with no network). Fall back to the
+        # whitespace estimate rather than raising — this module is documented to
+        # stay callable regardless of what optional pieces are available.
+        return len(text.split())
 
 
 __all__ = ["count_tokens"]

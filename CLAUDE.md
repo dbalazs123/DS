@@ -19,7 +19,7 @@ in the **same** change.
 ├── pyproject.toml         # PEP 621 metadata + deps + tool config (uv, ruff, mypy, pytest)
 ├── Makefile               # thin task wrappers (make help)
 ├── src/ds/                # reusable library, organized by DS process
-│   ├── config.py logging.py reproducibility.py   # cross-cutting
+│   ├── config.py logging.py reproducibility.py cli.py   # cross-cutting + `ds` CLI
 │   ├── io/ validation/ preprocessing/ eda/ features/
 │   ├── modeling/          # tabular.py timeseries.py nlp.py
 │   ├── evaluation/ viz/ utils/
@@ -48,6 +48,7 @@ Commands a contributor runs:
 
 ```bash
 uv sync            # create env, install ds + dev tools
+ds new "<name>"    # scaffold a project under projects/ (wraps copier)
 make check         # lint + typecheck + test (what CI runs)
 make lint          # uv run ruff check .
 make format        # uv run ruff format . && ruff check --fix .

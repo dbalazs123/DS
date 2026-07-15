@@ -48,6 +48,9 @@ timeseries = [
 # Everything, for a full workstation setup.
 all = ["ds[nlp,timeseries]"]
 
+[project.scripts]
+ds = "ds.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/BudSpencR/DS"
 Repository = "https://github.com/BudSpencR/DS"
@@ -108,6 +111,7 @@ module = [
     "sktime.*",
     "tiktoken.*",
     "torch.*",
+    "copier.*",
 ]
 ignore_missing_imports = true
 
