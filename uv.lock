@@ -550,7 +550,6 @@ wheels = [
 
 [[package]]
 name = "ds"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "matplotlib" },
@@ -597,8 +596,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anthropic", marker = "extra == 'all'", specifier = ">=0.40" },
     { name = "anthropic", marker = "extra == 'nlp'", specifier = ">=0.40" },
-    { name = "ds", extras = ["nlp", "timeseries"], marker = "extra == 'all'" },
     { name = "matplotlib", specifier = ">=3.9" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pandas", specifier = ">=2.2" },
@@ -608,12 +607,16 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pydantic-settings", specifier = ">=2.3" },
     { name = "scikit-learn", specifier = ">=1.5" },
+    { name = "sentence-transformers", marker = "extra == 'all'", specifier = ">=3.0" },
     { name = "sentence-transformers", marker = "extra == 'nlp'", specifier = ">=3.0" },
+    { name = "sktime", marker = "extra == 'all'", specifier = ">=0.30" },
     { name = "sktime", marker = "extra == 'timeseries'", specifier = ">=0.30" },
+    { name = "statsmodels", marker = "extra == 'all'", specifier = ">=0.14" },
     { name = "statsmodels", marker = "extra == 'timeseries'", specifier = ">=0.14" },
+    { name = "tiktoken", marker = "extra == 'all'", specifier = ">=0.7" },
     { name = "tiktoken", marker = "extra == 'nlp'", specifier = ">=0.7" },
 ]
-provides-extras = ["nlp", "timeseries", "all"]
+provides-extras = ["all", "nlp", "timeseries"]
 
 [package.metadata.requires-dev]
 dev = [

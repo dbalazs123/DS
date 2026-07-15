@@ -66,7 +66,9 @@ go in the right extra and must degrade gracefully when absent (see
 
 ### Branching
 
-Active development for this task happens on the branch **`claude/claude-md-docs-ent70v`**.
+Do work on a per-task feature branch, not on a branch named here (a hard-coded
+name only goes stale). If the task specifies a branch, use that one; otherwise
+create a descriptive branch from the latest default branch.
 
 - Develop changes on the designated feature branch; create it locally from the
   latest default branch if needed.
