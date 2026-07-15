@@ -57,4 +57,15 @@ uv sync --extra all          # everything
 ## Development
 
 `make help` lists all commands. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
-workflow and conventions.
+workflow and conventions. CI runs pre-commit (ruff + mypy) and the test suite
+with an enforced coverage gate on every push and PR.
+
+**Docs** are built with `make docs` locally. CI builds them with `--strict` on
+every push/PR and deploys them to GitHub Pages on every push to `master`.
+
+**Releases** are cut by pushing a SemVer tag; CI builds the package and creates
+the GitHub Release:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
