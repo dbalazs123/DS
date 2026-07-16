@@ -7,7 +7,7 @@ for hard-won gotchas, see the "Engineering notes" section of
 
 ## Where things stand
 
-The library is organized by data-science process and every stage now carries a
+The library is organized by data-science process and every stage carries a
 working set of the most-reached-for helpers. Built out so far:
 
 | Stage | Module | Status |
@@ -17,250 +17,192 @@ working set of the most-reached-for helpers. Built out so far:
 | Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns`, `drop_duplicate_rows`, `coerce_dtypes`, `flag_outliers`, `clip_outliers`, `impute_missing` + split-safe pairs `fit_outlier_bounds`/`apply_flag_outliers`/`apply_clip_outliers`, `fit_impute_values`/`apply_impute_missing` |
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
 | Feature | `ds.features` | `add_datetime_features`, `one_hot_encode`, `ordinal_encode`, `scale_features`, `bin_column` + split-safe pairs `fit_one_hot_categories`/`apply_one_hot_encode`, `fit_ordinal_categories`/`apply_ordinal_encode`, `fit_scale_params`/`apply_scale_features` |
-| Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `count_tokens` |
+| Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `count_tokens` — **the thinnest stage; see the evaluation below** |
 | Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics` |
 | Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_confusion_matrix`, `plot_residuals` |
 
 Supporting: `ds.pipeline` (a persistable fit-once/apply-many `Pipeline` over
-the `fit_*`/`apply_*` pairs), `ds` CLI (`ds version`, `ds new`, `ds run`), a per-stage
-docs Guide, a `test-extras` CI job, single-sourced version, and an extended
-project template.
+the `fit_*`/`apply_*` pairs), `ds` CLI (`ds version`, `ds new`, `ds run`), a
+per-stage docs Guide with cross-stage recipes, a `test-extras` CI job,
+single-sourced version, and an extended project template. `projects/` holds the
+synthetic worked example (`_example`) and the first **real-data** project
+(`nyc_taxis`).
 
-## Done — the four thin stages are fleshed out
+## Goal evaluation (2026-07)
 
-Each stage every analysis touches now has its most-reached-for helpers, built to
-the standard recipe: right stage module → Google-style docstring + full type
-hints (`mypy --strict`) → mirroring test → export from `__all__`, favouring the
-core deps (pandas, numpy, scikit-learn, matplotlib).
+A deliberate stop to work backward from the project's stated goals instead of
+extending recent momentum. Verdicts, and what they imply:
 
-- **`ds.preprocessing`** — `coerce_dtypes`, `flag_outliers` / `clip_outliers`,
-  `drop_duplicate_rows`, `impute_missing`, paired with `ds.viz.plot_outliers`.
-- **`ds.features`** — `one_hot_encode`, `ordinal_encode`, `scale_features`,
-  `bin_column`.
-- **`ds.validation`** — `assert_in_range`, `assert_in_set`, `assert_dtypes`, and
-  a `pandera`-backed `check_schema`.
-- **`ds.io`** — `.tsv`/`.jsonl` formats plus a `data/`-aware `load_raw` /
-  `save_processed` pair resolving paths via `ds.config`.
+- **Hybrid workspace (library + `projects/` that consume it)** — *was the
+  most under-served goal.* Until `nyc_taxis`, `projects/` held only the
+  synthetic `_example`, whose data is generated to be exactly as dirty as the
+  library can clean; the promotion loop ("friction in a project becomes
+  library work") had never run, while eight consecutive PRs invested in
+  supply-side library polish. **Consequence:** every library addition should
+  now be pulled by a project need, not pushed from a candidate list. The
+  friction backlog below is the current queue.
+- **Fit-once / score-later** — *stopped one step short of its own goal.*
+  Fitted parameters and the `Pipeline` persist as strict JSON, but the fitted
+  **model** cannot be persisted at all, so "score new rows in a later run or
+  another process" breaks at the estimator. This is the top library gap (P2).
+- **Every stage carries working helpers** — *sharply uneven.* Clean/Feature
+  are rich; Model is two split helpers plus `count_tokens` and Evaluate is
+  four point-metric functions — no baselines, no cross-validation (not even
+  rolling-origin, though the flagship example is a forecast), no model
+  comparison. The stages where the science happens are the thinnest (P3).
+- **"Toolkit for every situation"** — *was dishonest at the packaging layer,
+  now fixed.* The `timeseries` extra (statsmodels, sktime) had zero importers,
+  most of the `nlp` extra was unused, and `polars` sat unused in the core
+  dependencies. Extras now carry only dependencies code actually consumes
+  (the rule is recorded in `pyproject.toml` and CLAUDE.md). In-scope reality
+  today: tabular regression/classification on pandas — widen it by building,
+  not by declaring.
+- **Engineering discipline** — *well-served* (strict typing, mirrored tests,
+  coverage gate, honest docs). No change; point it at the gaps above.
 
-When adding more, keep pairing stage functions with `ds.viz` plots where it
-helps (as `plot_outliers` visualizes `flag_outliers`, mirroring `plot_missingness`
-and `plot_confusion_matrix`).
+Completed work that mattered less against the goals (kept, but the lesson is
+recorded): `ds run` and the cross-stage cookbook recipes are good polish that
+consumed cycles while the demand side stayed empty; `count_tokens` is an
+orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
 
-## Done — the worked example dogfoods the new stages
+## Plan of record
 
-`projects/_example/pipeline.py` generates realistically dirty synthetic data
-(missing values, outliers, a genuine categorical column, duplicate rows) and
-runs it through the full lifecycle: `load_raw`/`save_processed` (acquire),
-`check_schema`/`require_columns` (validate), `coerce_dtypes`,
-`drop_duplicate_rows` alongside the existing
-`standardize_column_names`/`drop_constant_columns` (structural clean), a
-chronological split, then split-safe clip → impute → encode → scale via the
-`fit_*`/`apply_*` pairs (fitted on train, applied to both — see the fit/apply
-section below), and the existing model → evaluate → visualize flow, with
-`ds.viz.plot_outliers` alongside the forecast figure. `tests/test_example.py`
-asserts the new-stage behavior (no nulls after cleaning, identical encoded
-columns on both splits, outliers clipped to train-fitted bounds) rather than
-just the metric keys.
+- **P1 — run the demand loop on real data: DONE.** `projects/nyc_taxis`
+  predicts cab fares from the real March-2019 NYC rides sample (seaborn
+  `taxis`, mirrored from the NYC TLC records; downloaded once into
+  git-ignored `data/raw/`). Full lifecycle on `ds` + scikit-learn, split-safe
+  transforms persisted as one scoring `Pipeline`, evaluated against a naive
+  baseline (r² 0.73 vs baseline mae 7.2 → 2.6). Its friction list *is* the
+  backlog below.
+- **P2 — model persistence (next up).** `ds.modeling` gains
+  `save_model`/`load_model` (joblib under the hood — already present
+  transitively via scikit-learn; document the unpickling trust boundary).
+  Then the worked example and `nyc_taxis` reload **pipeline + model** with no
+  in-memory carryover, and the fit-once/score-later goal is actually met.
+- **P3 — bring Model/Evaluate up to the Clean/Feature standard.** Core deps
+  only, standard recipe: baseline estimators (`fit_baseline`: mean /
+  naive-last / seasonal-naive) so every first metric has a reference point;
+  `cross_validate_by_time` (rolling-origin) plus a plain k-fold wrapper; a
+  small model-comparison frame paired with a `ds.viz` plot. Re-rank against
+  the friction backlog before building.
+- **P4 — honest packaging: DONE.** Unused pins removed (`polars` from core;
+  `sentence-transformers`/`anthropic`/`statsmodels`/`sktime` from extras —
+  `nlp` is now exactly `tiktoken`). A dependency is added in the same change
+  as its first consumer. Intended future extras (e.g. a statsmodels-backed
+  `timeseries`) live here until that code exists.
 
-## Done — fit/apply (split-safe) transforms
+Deprioritized until a project pulls them: more EDA helpers, more viz, more
+cookbook recipes, more CLI.
+
+## Friction backlog (from `projects/nyc_taxis`)
+
+Demand-driven candidates, in observed-pain order:
+
+1. **Model persistence** — the scoring `Pipeline` round-trips as JSON but the
+   fitted estimator cannot be saved (= P2).
+2. **`add_datetime_features` has no `hour`** — hour of day was the strongest
+   temporal signal in the data and had to be hand-rolled. Add an `_hour`
+   column (and consider opting parts in/out) — smallest, clearest win.
+3. **No baseline estimators** — the train-mean reference model was
+   hand-rolled (= first slice of P3).
+4. **No high-cardinality strategy** — the ~200-level zone columns can't be
+   one-hot or ordinal encoded; the project fell back to boroughs. Candidate:
+   a `fit_*/apply_*` frequency or top-k("other") encoder in `ds.features`.
+5. **Pipeline fit-side observation** (for the settled pure-composition
+   decision below): assembling the scoring pipeline required manually fitting
+   each parameter set on a progressively transformed train frame
+   (fit → apply → fit next). Pure composition stays settled for now, but if a
+   second project repeats this dance, a declarative fit-a-plan convenience
+   earns a fresh look.
+
+## Settled decisions (recorded rationale)
+
+Kept for the record — CLAUDE.md's engineering notes point here. Each was
+re-checked in the 2026-07 evaluation; verdicts inline.
+
+### The four thin stages fleshed out *(stands)*
+
+Each stage every analysis touches carries its most-reached-for helpers, built
+to the standard recipe: right stage module → Google-style docstring + full
+type hints (`mypy --strict`) → mirroring test → export from `__all__`,
+favouring the core deps (pandas, numpy, scikit-learn, matplotlib). When adding
+more, keep pairing stage functions with `ds.viz` plots where it helps (as
+`plot_outliers` visualizes `flag_outliers`).
+
+### The worked example dogfoods the stages *(stands, superseded as proof)*
+
+`projects/_example/pipeline.py` runs realistically dirty **synthetic** data
+through the full lifecycle and `tests/test_example.py` asserts the split-safe
+behavior. It remains the teaching reference; `projects/nyc_taxis` is now the
+proof on data the library didn't design.
+
+### Fit/apply (split-safe) transforms *(stands)*
 
 The five statistic-learning transforms (`impute_missing`, `scale_features`,
-`clip_outliers`/`flag_outliers`, `one_hot_encode`, `ordinal_encode`) now each
-have a paired `fit_*`/`apply_*` form: `fit_*` learns the parameters from one
-frame and returns them as a small frozen dataclass, `apply_*` takes them and
-transforms any frame. The single-call forms remain as convenience wrappers
-(`fit` + `apply` on the same frame) for exploratory/pre-split use, and are
-implemented as exactly that, so the two forms can't drift.
+`clip_outliers`/`flag_outliers`, `one_hot_encode`, `ordinal_encode`) each have
+a paired `fit_*`/`apply_*` form: `fit_*` learns parameters from one frame and
+returns a small frozen dataclass, `apply_*` applies them to any frame. The
+single-call forms remain as fit-and-apply-on-the-same-frame conveniences and
+are implemented as exactly that, so the two forms can't drift. Category
+vocabularies are fixed at fit time (unseen categories → all-zero indicators /
+`-1` codes).
 
-- `ds.preprocessing`: `fit_outlier_bounds` → `OutlierBounds` →
-  `apply_clip_outliers`/`apply_flag_outliers` (one fit serves both, since they
-  share bounds); `fit_impute_values` → `ImputeValues` → `apply_impute_missing`.
-- `ds.features`: `fit_scale_params` → `ScaleParams` → `apply_scale_features`;
-  `fit_one_hot_categories` → `OneHotCategories` → `apply_one_hot_encode`;
-  `fit_ordinal_categories` → `OrdinalCategories` → `apply_ordinal_encode`.
-- The dogfooding friction that motivated this is resolved: the category
-  vocabulary is fixed once at fit time, so train and test always encode to the
-  same column set (unseen categories → all-zero indicators / `-1` codes), and
-  learned fills/bounds/centre+spread can be captured, inspected and reused on
-  new rows.
-- `projects/_example/pipeline.py` now splits chronologically *first* and runs
-  every statistic-learning transform as fit-on-train/apply-to-both, closing the
-  leakage the previous example knowingly demonstrated; `tests/test_example.py`
-  asserts the split-safe behavior (train-fitted bounds/fills applied to test,
-  identical column sets on both splits) and `docs/guide.md` documents the
-  pattern in a dedicated cookbook section.
+### Persistable fit parameters *(revisited: scope was too narrow)*
 
-## Done — persistable fit parameters
+The five `fit_*` dataclasses carry validated `to_dict`/`from_dict` round-trips
+and `ds.io.save_params`/`load_params` persist them as strict JSON. Decisions
+that stand: per-class methods rather than a generic `asdict` mechanism (honest
+types under `mypy --strict`, per-class edge-case handling next to each
+definition, shared plumbing in private `ds._serde`, `ds.io` typed against the
+`FittedParams` protocol); strict JSON on disk (tagged non-finite floats, numpy
+scalars unwrapped, tuples re-tupled, `from_dict` validates type tag + exact
+field set). **Revisit recorded:** the cited goal — "score new rows in a later
+run or another process" — is unmet without persisting the *model* too; P2
+extends the story to the estimator.
 
-The five `fit_*` dataclasses (`OutlierBounds`, `ImputeValues`, `ScaleParams`,
-`OneHotCategories`, `OrdinalCategories`) each carry a `to_dict`/`from_dict`
-pair, and `ds.io.save_params`/`load_params` persist them as JSON — so a
-pipeline can save its fitted state alongside the model and score new incoming
-rows in a later run or another process. The worked example and the guide's
-split-safe cookbook section demonstrate the save-then-reload loop end to end.
+### Composable fit/apply pipeline *(stands; one observation logged)*
 
-- **Per-class methods, not a generic mechanism** — chosen deliberately for
-  `mypy --strict`: a `dataclasses.asdict`/`fields`-driven round-trip types as
-  `dict[str, Any] → T` with `cast`s for the `Literal` fields and no place to
-  validate per-field, whereas explicit methods give concrete return types and
-  put each class's edge-case handling (non-finite bounds, numpy scalar fills,
-  tuple vocabularies) next to its definition. The shared plumbing (scalar
-  encode/decode, payload-shape checks) lives in the private `ds._serde`
-  module, and `ds.io` stays decoupled by typing `save_params`/`load_params`
-  against a `FittedParams` protocol instead of importing the dataclasses.
-- **Strict JSON on disk** — non-finite floats (JSON has no `inf`/`nan`
-  literal) are written as a tagged `{"__float__": "inf"}` mapping rather than
-  Python's non-standard bare literals (`allow_nan=False` enforces it); numpy
-  scalars are unwrapped via `.item()`; vocabulary tuples round-trip through
-  lists and are re-tupled on load. Every `from_dict` validates the type tag,
-  the exact field set and the field shapes, so a stale or hand-edited file
-  fails with a message naming what is wrong.
+`ds.pipeline.Pipeline` holds an ordered tuple of `PipelineStep`s (fitted
+parameters + the `apply_*` kind they mean), applies them in order, and
+persists through `save_params`/`load_params`. Decisions that stand: a
+top-level `ds.pipeline` module (composes two stages; imports run strictly
+pipeline → stages); a closed `StepParams` union + `StepKind` literal under
+`mypy --strict`; steps tagged by *kind* because `OutlierBounds` serves two
+apply forms; train-time-only parameters stay out (scoring rows have no
+target). The per-pair API stays the primitive; the pipeline is pure
+composition — see friction item 5 for the observation that could reopen the
+fit side.
 
-## Done — composable fit/apply pipeline
+### API discoverability: import by stage *(stands)*
 
-The open question is closed: `ds.pipeline.Pipeline` is a small frozen object
-holding an ordered `tuple` of `PipelineStep`s, each pairing fitted parameters
-with the `apply_*` transform it means; `apply(df)` runs the steps in order,
-and `to_dict`/`from_dict` delegate to the per-class round-trips so a whole
-pipeline persists through `ds.io.save_params`/`load_params` (it satisfies the
-same `FittedParams` protocol). A scoring run reloads one file instead of
-re-stringing the `apply_*` calls by hand — the worked example's fresh-rows
-step now does exactly that. The per-pair API stays the primitive; the
-pipeline is pure composition.
-
-Decisions made deliberately, for the record:
-
-- **Where it lives: a new top-level `ds.pipeline` module** (like `ds.config`
-  and `ds.reproducibility`), not inside a stage — a pipeline composes
-  transforms from *two* stages (`ds.preprocessing` and `ds.features`), so
-  homing it in either would couple the stages to each other. Imports run
-  strictly pipeline → stages, so no cycle can form. It is imported from
-  `ds.pipeline`, not re-exported from `ds/__init__.py` — the settled
-  import-by-stage convention (see "API discoverability" below).
-- **Typing under `mypy --strict`: a closed union, not a protocol.**
-  `StepParams` is the union of the five parameter dataclasses and `StepKind`
-  a `Literal` of the six apply forms; dispatch is exhaustive `isinstance`
-  narrowing with no `cast`s, and a step validates kind ↔ parameter-class
-  agreement at construction. The set of fit/apply pairs is small and closed,
-  so the union is honest; a new pair extends the union, the kind literal and
-  the registry in one place.
-- **Steps are tagged by *kind* (the apply form), not by the parameter class's
-  `"type"` tag** — necessary because `OutlierBounds` serves two apply forms
-  (`"clip_outliers"` winsorizes; `"flag_outliers"` adds boolean
-  `<column>_outlier` columns). The kind→class registry resolves classes in
-  `from_dict`; the nested payloads are still validated by each class's own
-  `from_dict`, so unknown kinds, wrong-class payloads and malformed fields
-  all fail with an error naming the offending step. Step order and same-type
-  duplicates (e.g. two `ImputeValues` with different strategies) survive the
-  round-trip.
-- **Train-time-only parameters stay out by design.** A pipeline holds
-  scoring-time transforms only; anything fitted on the target column (the
-  example's sales bounds/fill — scoring rows have no target) is persisted
-  individually instead. Stateless transforms (`add_datetime_features`) take
-  no fitted parameters and run outside the pipeline as plain calls.
-
-`tests/test_pipeline.py` covers construction, application order, persistence
-and every edge case above; `docs/guide.md`'s split-safe cookbook section
-documents the pattern.
-
-## Done — API discoverability: import by stage
-
-**Decision: keep the strict import-by-stage convention; do not add a flat
-top-level re-export.** Stage helpers are imported from their stage
-(`from ds.eda import summarize`), and `ds.pipeline.Pipeline` / `PipelineStep`
-from `ds.pipeline`; the top-level `ds` namespace re-exports only the
+Stage helpers are imported from their stage (`from ds.eda import summarize`),
+`Pipeline` from `ds.pipeline`; the top-level `ds` namespace re-exports only
 stage-independent infrastructure (`Settings`, `get_settings`, `get_logger`,
-`seed_everything`). `Pipeline` does **not** earn a top-level re-export.
+`seed_everything`). The stage name is the teaching tool; a flat re-export
+would force `import ds` to eagerly load matplotlib/scikit-learn and pile all
+stages' names into one namespace. `tests/test_public_api.py` pins the exact
+top-level surface (and that `import ds` stays cheap). `Pipeline` earns no
+top-level re-export — a pipeline *composes* stage transforms, so flattening
+the composer while its building blocks stay stage-scoped would be the one
+inconsistent case.
 
-Grounded in the codebase's own conventions rather than a fresh preference:
+### The `ds` CLI: `run` added, `check` rejected *(stands)*
 
-- **The `__all__` policy already drew this line** — `src/ds/__init__.py` has
-  only ever re-exported cross-cutting helpers, and CLAUDE.md's "stage functions
-  are imported by stage" note codified it. The Guide's cookbook and the worked
-  example both teach `from ds.<stage> import ...` throughout. A flat re-export
-  would unwind a convention every existing doc and file already follows.
-- **The stage name is the teaching tool.** `from ds.features import
-  one_hot_encode` says *this is a feature step*; flattening to
-  `ds.one_hot_encode` discards the process organization that is the library's
-  whole reason for its shape.
-- **Cost and collisions (the flagged edge cases).** Re-exporting the stages
-  would force `ds/__init__.py` to import every stage at `import ds` time —
-  including matplotlib via `ds.viz`, scikit-learn via `ds.modeling`, and the
-  optional-extra guards in `ds.modeling.nlp` — and would pile all stages'
-  names into one namespace to be disambiguated. Import-by-stage keeps `import
-  ds` light (verified: no matplotlib/sklearn loaded) and each stage's names
-  contained. `from ds import Settings, get_logger, seed_everything` (relied on
-  by the example and template) is unchanged.
-- **`Pipeline` re-export, specifically:** rejected for symmetry — a pipeline
-  *composes* stage transforms, so re-exporting the composer while its
-  `fit_*`/`apply_*` building blocks stay stage-scoped would be the one
-  inconsistent case. It stays `from ds.pipeline import Pipeline`.
+`ds run <name>` cleared the bar as a *project-aware default*: it resolves
+names against the real directories under `projects/` (literal or `ds new`
+slug), lists the runnable projects on a miss, and never builds a path from
+the name (same traversal discipline as `ds new`). `ds check` stays rejected:
+it would either duplicate `make check`'s sequence (drift risk) or just call
+`make` (adding nothing) — `make` is the canonical dev entry point. Don't
+re-add it.
 
-Documented prominently in `docs/guide.md` ("Importing from DS"), `docs/index.md`
-and `README.md`; the convention note in `CLAUDE.md` is expanded; and
-`tests/test_public_api.py` pins the exact top-level surface (and asserts
-`import ds` stays cheap) so it can't drift.
+### Docs cookbook: cross-stage recipes *(stands)*
 
-## Done — the `ds` CLI grows to `run`; `check` rejected
-
-**Decision: add `ds run`, reject `ds check`.** The gate was whether a subcommand
-earns its keep over what already exists — `make check` (lint + typecheck + test)
-and `uv run python projects/<name>/pipeline.py` — by adding real value
-(discoverability, a project-aware default, cross-platform reach) rather than
-just shelling out.
-
-- **`ds run <name>` — added.** It clears the bar as a *project-aware default*:
-  it resolves the name against the real directories under `projects/`, matching
-  either the literal directory name or the same slug `ds new` derives (so
-  `"Customer Churn"`, `customer_churn` and `customer-churn` all reach
-  `projects/customer_churn/`, and `_example` is reachable as `example`), then
-  runs that project's `pipeline.py` with the current interpreter. It adds
-  *discoverability* — a miss lists the runnable projects instead of failing
-  blankly — and is symmetric with `ds new` (new creates the project, run runs
-  it). Crucially it never builds a path out of the name: it selects an existing
-  entry from the `projects/` listing, so a traversal attempt like `../evil`
-  matches nothing rather than escaping the directory — the same slug discipline
-  that keeps `ds new` safe. This is more than a wrapper over the raw
-  `python projects/<name>/pipeline.py`: that form requires knowing the exact
-  layout, offers no fuzzy-name resolution, and lists nothing on a typo.
-- **`ds check` — rejected.** It would be a pure shell-out to the same tools
-  `make check` already orchestrates, and `make` is the project's canonical dev
-  entry point (README, CLAUDE.md and CONTRIBUTING.md all assume it). A second
-  entry point either reimplements the lint→typecheck→test sequence (a drift
-  risk against the Makefile — two sources of truth) or just calls `make` (adding
-  nothing, and still failing on a make-less Windows). Its one plausible unique
-  benefit — cross-platform reach where `make` is absent — doesn't apply to a
-  workflow whose whole documented surface is `uv` + `make`, so it never earns
-  its keep. Recorded in CLAUDE.md's engineering notes so it isn't re-added.
-
-`tests/test_cli.py` covers name resolution (literal/slug/underscored),
-traversal rejection, exit-code propagation, and the not-found listing;
-`docs/guide.md`, `README.md` and `CLAUDE.md` document `ds run`.
-
-## Done — docs cookbook: cross-stage recipes
-
-**Decision: add the highest-value cross-stage recipes, not every possible
-combination.** The per-stage cookbook already walked every stage in sync with
-the worked example; the open gap was combinations a reader would reach for
-but couldn't yet copy-paste — validating at the acquire boundary, screening
-for redundant features before scaling, and closing the model → evaluate →
-visualize loop with a real estimator. Each is a short, runnable snippet in
-the existing cookbook voice, using the settled import-by-stage convention and
-verified against the current signatures (`docs/guide.md`, "Validate what you
-just loaded", "Screen for redundant features before scaling", and "Fit,
-evaluate and diagnose a model in one pass").
-
-Candidates considered and **skipped** as not clearing the bar: binning a
-continuous target into classes to reuse `ds.evaluation.classification_metrics`
-(a real pattern, but a stretch of `bin_column`'s documented purpose rather
-than a natural combination); combining `ds.io.save_params`/`Pipeline`
-persistence with a second, unrelated artifact store (already fully covered by
-the existing "Persist the fitted parameters" / "Compose the applies into one
-pipeline" sections — would be padding, not new ground).
-
-The remaining work is the same as before, just smaller: add a recipe here if
-and when a new less-common combination actually comes up in practice, rather
-than pre-building a catalog of hypothetical ones.
+The highest-value cross-stage recipes are in `docs/guide.md` (validate at the
+acquire boundary; screen redundant features before scaling; fit/evaluate/
+diagnose with a real estimator). Add a recipe if and when a new combination
+comes up in practice — pre-building a catalog of hypothetical ones was
+considered and skipped.
 
 ## Working agreement
 
@@ -270,3 +212,6 @@ than pre-building a catalog of hypothetical ones.
   `mkdocs build --strict` must pass before committing.
 - Keep `README.md`, `CLAUDE.md`, the docs, and `CHANGELOG.md` honest in the same
   change that alters structure, tooling, or the public API.
+- **Demand first:** new library work should trace to a friction item from a
+  real project (or a P2/P3 plan-of-record item), not to a brainstormed
+  candidate list.

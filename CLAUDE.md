@@ -26,7 +26,8 @@ in the **same** change.
 │   ├── modeling/          # tabular.py timeseries.py nlp.py
 │   ├── evaluation/ viz/ utils/
 │   └── py.typed
-├── projects/              # analyses/experiments (see _example/pipeline.py)
+├── projects/              # analyses/experiments (_example = synthetic teaching
+│                          #   reference; nyc_taxis = real-data fare prediction)
 ├── templates/project/     # copier template for new projects
 ├── notebooks/             # exploratory notebooks
 ├── data/                  # git-ignored: raw/ interim/ processed/
@@ -72,9 +73,12 @@ more detail).
 
 ## Roadmap
 
-Planned work — including the still-thin stages (`preprocessing`, `features`,
-`validation`, `io`) and candidate functions for each — lives in
-[`ROADMAP.md`](ROADMAP.md). Read it before starting new library work.
+[`ROADMAP.md`](ROADMAP.md) carries the plan of record (next up: model
+persistence, then Model/Evaluate build-out), a goal evaluation of the whole
+toolkit, the friction backlog from the real-data `nyc_taxis` project, and the
+settled-decision rationales this file's notes point to. Read it before starting
+new library work — and note its ordering rule: new library work should trace to
+a friction item from a real project, not a brainstormed candidate list.
 
 ## Engineering notes (hard-won gotchas)
 
