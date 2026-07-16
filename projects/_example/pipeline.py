@@ -9,10 +9,12 @@ score fresh rows from the reloaded state → evaluate → visualize.
 Every statistic-learning transform is fitted on the training window only and
 applied to both splits with the ``fit_*`` / ``apply_*`` pairs, so the held-out
 window never leaks into the clip bounds, fill values, category vocabulary or
-scaling parameters. The fitted parameters are then saved alongside the
-processed data with ``ds.io.save_params`` and reloaded with
-``ds.io.load_params`` to score rows that did not exist at fit time — the same
-loop a real project runs when new data arrives after training.
+scaling parameters. The scoring-time transforms are then assembled into one
+``ds.pipeline.Pipeline``, saved alongside the processed data with
+``ds.io.save_params`` and reloaded with ``ds.io.load_params`` to score rows
+that did not exist at fit time — the same loop a real project runs when new
+data arrives after training, without re-stringing the ``apply_*`` calls (or
+their order) by hand.
 
 Run it with::
 
@@ -35,8 +37,6 @@ from sklearn.linear_model import LinearRegression
 from ds import Settings, get_logger, seed_everything
 from ds.evaluation import regression_metrics
 from ds.features import (
-    OneHotCategories,
-    ScaleParams,
     add_datetime_features,
     apply_one_hot_encode,
     apply_scale_features,
@@ -46,8 +46,8 @@ from ds.features import (
 from ds.io import load_params, load_raw, save_params, save_processed, save_table
 from ds.modeling.tabular import split_features_target
 from ds.modeling.timeseries import train_test_split_by_time
+from ds.pipeline import Pipeline, PipelineStep
 from ds.preprocessing import (
-    ImputeValues,
     apply_clip_outliers,
     apply_impute_missing,
     coerce_dtypes,
@@ -169,13 +169,23 @@ def run(output_dir: Path) -> dict[str, float]:
         save_processed(pd.concat([train, test]), "sales_features.parquet", settings=settings)
 
         # 6. Persist the fitted state alongside the processed data, so a later
-        # run (or another process) can score fresh rows without refitting.
+        # run (or another process) can score fresh rows without refitting. The
+        # scoring-time transforms — and their order — travel as ONE pipeline
+        # object instead of a file per parameter. The target-column steps stay
+        # out of it: `bounds` and `sales_fill` were fitted on `total_sales`,
+        # which scoring rows do not have, so they are train-time-only and are
+        # saved individually for the next training run instead.
+        scoring = Pipeline(
+            steps=(
+                PipelineStep("impute_missing", region_fill),
+                PipelineStep("one_hot_encode", vocabulary),
+                PipelineStep("scale_features", scaling),
+            )
+        )
         params_dir = settings.processed_dir / "params"
-        save_params(bounds, params_dir / "outlier_bounds.json")
-        save_params(sales_fill, params_dir / "sales_fill.json")
-        save_params(region_fill, params_dir / "region_fill.json")
-        save_params(vocabulary, params_dir / "region_vocabulary.json")
-        save_params(scaling, params_dir / "date_scaling.json")
+        save_params(scoring, params_dir / "scoring_pipeline.json")
+        save_params(bounds, params_dir / "outlier_bounds.json")  # train-time-only
+        save_params(sales_fill, params_dir / "sales_fill.json")  # train-time-only
 
         # 7. Model.
         x_train, y_train = split_features_target(train.drop(columns=["date"]), "total_sales")
@@ -183,26 +193,20 @@ def run(output_dir: Path) -> dict[str, float]:
         model = LinearRegression().fit(x_train, y_train)
         preds = model.predict(x_test)
 
-        # 8. Score fresh rows from the reloaded state — the "later run". Only
-        # the saved files are used to rebuild the transforms; rows include a
-        # missing region (filled with the train mode) and an unseen region
-        # ("central", one-hot encodes as all zeros under the fixed vocabulary).
+        # 8. Score fresh rows from the reloaded state — the "later run". One
+        # saved file rebuilds the whole ordered transform chain (impute region
+        # -> encode region -> scale calendar features); only the stateless
+        # calendar expansion runs outside it. Rows include a missing region
+        # (filled with the train mode) and an unseen region ("central",
+        # one-hot encodes as all zeros under the fixed vocabulary).
         fresh = pd.DataFrame(
             {
                 "date": pd.date_range(df["date"].max() + pd.Timedelta(days=1), periods=7, freq="D"),
                 "region": ["north", "south", None, "east", "west", "central", "north"],
             }
         )
-        fresh = apply_impute_missing(
-            fresh, load_params(params_dir / "region_fill.json", ImputeValues)
-        )
         fresh = add_datetime_features(fresh, "date", drop=False)
-        fresh = apply_one_hot_encode(
-            fresh, load_params(params_dir / "region_vocabulary.json", OneHotCategories)
-        )
-        fresh = apply_scale_features(
-            fresh, load_params(params_dir / "date_scaling.json", ScaleParams)
-        )
+        fresh = load_params(params_dir / "scoring_pipeline.json", Pipeline).apply(fresh)
         fresh_preds = model.predict(fresh[x_train.columns])
         logger.info("Scored %d fresh rows with reloaded parameters", len(fresh_preds))
 

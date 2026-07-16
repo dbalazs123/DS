@@ -208,9 +208,50 @@ bounds) as a tagged `{"__float__": "inf"}` mapping, and category vocabularies
 keep non-string values (ints, bools) intact. `load_params` validates the
 payload against the class you ask for, so a stale, hand-edited or
 wrong-type file fails with a clear error instead of building broken
-parameters. The worked example saves all five fitted objects next to its
-processed data and rebuilds them from disk to score rows that did not exist
-at fit time.
+parameters.
+
+#### Compose the applies into one pipeline
+
+Once several parameters are fitted, a scoring run shouldn't have to re-string
+the `apply_*` calls — and their order — by hand. `ds.pipeline.Pipeline` owns
+an ordered sequence of fitted steps, applies them all in one call, and
+persists through the same `save_params`/`load_params` machinery:
+
+```python
+from ds.io import load_params, save_params
+from ds.pipeline import Pipeline, PipelineStep
+
+scoring = Pipeline(                                   # training run
+    steps=(
+        PipelineStep("impute_missing", fills),
+        PipelineStep("one_hot_encode", vocab),
+        PipelineStep("scale_features", scaling),
+    )
+)
+save_params(scoring, "artifacts/scoring_pipeline.json")
+
+scoring = load_params("artifacts/scoring_pipeline.json", Pipeline)  # scoring run
+new_rows = scoring.apply(new_rows)                    # every step, in order
+```
+
+Each step names the `apply_*` transform it means via its *kind* — that is how
+one `OutlierBounds` serves both forms: a `"clip_outliers"` step winsorizes the
+fitted columns, while a `"flag_outliers"` step adds boolean
+`<column>_outlier` columns instead. Steps of the same parameter type coexist
+(e.g. a median fill for numerics and a modal fill for categoricals), and step
+order survives the round-trip. Loading a stale or hand-edited file — an
+unknown step kind, a malformed nested payload — fails with an error naming
+the offending step.
+
+Two things deliberately stay **out** of a pipeline: train-time-only
+parameters (anything fitted on the target column — scoring rows have no
+target to clip or fill; save those individually for the next training run)
+and stateless transforms like `add_datetime_features`, which take no fitted
+parameters and run as plain calls before or after `apply`. The worked example
+(`projects/_example/pipeline.py`) draws exactly this line: one saved
+`Pipeline` (impute region → encode region → scale calendar features) scores
+rows that did not exist at fit time, while the target-column bounds and fill
+are persisted separately.
 
 ### Model — `ds.modeling`
 

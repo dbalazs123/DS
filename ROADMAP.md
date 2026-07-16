@@ -21,8 +21,10 @@ working set of the most-reached-for helpers. Built out so far:
 | Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics` |
 | Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_confusion_matrix`, `plot_residuals` |
 
-Supporting: `ds` CLI (`ds version`, `ds new`), a per-stage docs Guide, a
-`test-extras` CI job, single-sourced version, and an extended project template.
+Supporting: `ds.pipeline` (a persistable fit-once/apply-many `Pipeline` over
+the `fit_*`/`apply_*` pairs), `ds` CLI (`ds version`, `ds new`), a per-stage
+docs Guide, a `test-extras` CI job, single-sourced version, and an extended
+project template.
 
 ## Done — the four thin stages are fleshed out
 
@@ -114,25 +116,67 @@ split-safe cookbook section demonstrate the save-then-reload loop end to end.
   the exact field set and the field shapes, so a stale or hand-edited file
   fails with a message naming what is wrong.
 
+## Done — composable fit/apply pipeline
+
+The open question is closed: `ds.pipeline.Pipeline` is a small frozen object
+holding an ordered `tuple` of `PipelineStep`s, each pairing fitted parameters
+with the `apply_*` transform it means; `apply(df)` runs the steps in order,
+and `to_dict`/`from_dict` delegate to the per-class round-trips so a whole
+pipeline persists through `ds.io.save_params`/`load_params` (it satisfies the
+same `FittedParams` protocol). A scoring run reloads one file instead of
+re-stringing the `apply_*` calls by hand — the worked example's fresh-rows
+step now does exactly that. The per-pair API stays the primitive; the
+pipeline is pure composition.
+
+Decisions made deliberately, for the record:
+
+- **Where it lives: a new top-level `ds.pipeline` module** (like `ds.config`
+  and `ds.reproducibility`), not inside a stage — a pipeline composes
+  transforms from *two* stages (`ds.preprocessing` and `ds.features`), so
+  homing it in either would couple the stages to each other. Imports run
+  strictly pipeline → stages, so no cycle can form. It is *not* re-exported
+  from `ds/__init__.py`, pending the API-discoverability decision below.
+- **Typing under `mypy --strict`: a closed union, not a protocol.**
+  `StepParams` is the union of the five parameter dataclasses and `StepKind`
+  a `Literal` of the six apply forms; dispatch is exhaustive `isinstance`
+  narrowing with no `cast`s, and a step validates kind ↔ parameter-class
+  agreement at construction. The set of fit/apply pairs is small and closed,
+  so the union is honest; a new pair extends the union, the kind literal and
+  the registry in one place.
+- **Steps are tagged by *kind* (the apply form), not by the parameter class's
+  `"type"` tag** — necessary because `OutlierBounds` serves two apply forms
+  (`"clip_outliers"` winsorizes; `"flag_outliers"` adds boolean
+  `<column>_outlier` columns). The kind→class registry resolves classes in
+  `from_dict`; the nested payloads are still validated by each class's own
+  `from_dict`, so unknown kinds, wrong-class payloads and malformed fields
+  all fail with an error naming the offending step. Step order and same-type
+  duplicates (e.g. two `ImputeValues` with different strategies) survive the
+  round-trip.
+- **Train-time-only parameters stay out by design.** A pipeline holds
+  scoring-time transforms only; anything fitted on the target column (the
+  example's sales bounds/fill — scoring rows have no target) is persisted
+  individually instead. Stateless transforms (`add_datetime_features`) take
+  no fitted parameters and run outside the pipeline as plain calls.
+
+`tests/test_pipeline.py` covers construction, application order, persistence
+and every edge case above; `docs/guide.md`'s split-safe cookbook section
+documents the pattern.
+
 ## Later / bigger bets
+
+The remaining open items:
 
 - **API discoverability** — decide deliberately whether to curate a flat
   re-export of the most-used functions at the top level, or keep the
-  import-by-stage convention (and document it prominently either way).
+  import-by-stage convention (and document it prominently either way). This
+  also settles whether `ds.pipeline`'s `Pipeline` earns a top-level
+  re-export.
+- **`ds` CLI** — grow beyond `new` (e.g. `ds check`, `ds run`) if it earns its
+  keep.
 - **Docs cookbook** — mostly covered now: `docs/guide.md` already walks every
   stage with copy-pasteable recipes, kept in sync with the worked example.
   What's left is smaller — recipes for less-common combinations as they come
   up — rather than a first pass.
-- **`ds` CLI** — grow beyond `new` (e.g. `ds check`, `ds run`) if it earns its
-  keep.
-- **Composable fit/apply pipeline object — open question.** With the pairs
-  persistable, the remaining friction is that a scoring run re-strings the
-  `apply_*` calls (and their order) by hand, as the worked example's
-  fresh-rows step shows. A fit-once/apply-many "pipeline" object could own
-  the ordered list of fitted parameters, apply them in one call, and persist
-  itself via the existing `save_params`/`load_params` machinery. Decide once
-  more than one project needs it — the per-pair API stays the primitive
-  either way.
 
 ## Working agreement
 
