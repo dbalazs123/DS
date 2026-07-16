@@ -44,14 +44,60 @@ When adding more, keep pairing stage functions with `ds.viz` plots where it
 helps (as `plot_outliers` visualizes `flag_outliers`, mirroring `plot_missingness`
 and `plot_confusion_matrix`).
 
+## Done — the worked example dogfoods the new stages
+
+`projects/_example/pipeline.py` generates realistically dirty synthetic data
+(missing values, outliers, a genuine categorical column, duplicate rows) and
+runs it through the full lifecycle: `load_raw`/`save_processed` (acquire),
+`check_schema`/`require_columns` (validate), `coerce_dtypes`,
+`drop_duplicate_rows`, `clip_outliers`, `impute_missing` alongside the existing
+`standardize_column_names`/`drop_constant_columns` (clean), `one_hot_encode` +
+`scale_features` alongside `add_datetime_features` (feature), then the
+existing split → model → evaluate → visualize flow, now with
+`ds.viz.plot_outliers` alongside the forecast figure. `tests/test_example.py`
+asserts the new-stage behavior (no nulls after cleaning, encoded columns
+present, outliers clipped) rather than just the metric keys.
+
 ## Later / bigger bets
 
 - **API discoverability** — decide deliberately whether to curate a flat
   re-export of the most-used functions at the top level, or keep the
   import-by-stage convention (and document it prominently either way).
-- **Docs cookbook** — expand the Guide with worked recipes as stages grow.
+- **Docs cookbook** — mostly covered now: `docs/guide.md` already walks every
+  stage with copy-pasteable recipes, kept in sync with the worked example.
+  What's left is smaller — recipes for less-common combinations as they come
+  up — rather than a first pass.
 - **`ds` CLI** — grow beyond `new` (e.g. `ds check`, `ds run`) if it earns its
   keep.
+- **Fit/apply (split-safe) transforms — agreed next step.** `impute_missing`,
+  `scale_features`, `clip_outliers`, `one_hot_encode` and `ordinal_encode` all
+  fit their statistics (means, bounds, categories) on whichever frame they're
+  given, so a pipeline can only apply them *before* the train/test split —
+  applying them split-safely (fit on train, transform test with train's
+  statistics) isn't possible today. Rebuilding the worked example surfaced the
+  real friction this causes, to inform that design:
+  - Every one of these five functions had to run pre-split in the example, so
+    the test window's imputation median, scaling mean/std, clip bounds and
+    one-hot categories are all leaked from the future. Harmless for a demo,
+    disqualifying for a real evaluation.
+  - `one_hot_encode`/`ordinal_encode` infer categories from whatever data they
+    see; a category present only in train (or only in test) silently produces
+    a different column set on each side today — a fit/apply split would need
+    to fix the category vocabulary once, from train, and apply it to both.
+  - `impute_missing`'s per-column fill values (mean/median/mode) and
+    `scale_features`'s per-column center/spread are computed and discarded
+    inline — there's no way to capture and reuse them, so a caller who wants
+    train-only statistics has to reimplement the strategy by hand outside the
+    helper today.
+  - `clip_outliers`/`flag_outliers` recompute IQR/z-score bounds from
+    whatever frame they're given; bounds learned on train can't currently be
+    carried over and applied to test data or to new incoming rows.
+  - Shape: each function likely wants a paired `fit_*`/`apply_*` (or a small
+    stateful transformer object) that returns learned parameters from `fit`
+    and takes them as input to `apply`, while the existing single-call form
+    stays as a convenience wrapper (`fit` + `apply` on the same frame) for
+    exploratory/pre-split use — matching how the worked example uses them
+    today.
 
 ## Working agreement
 

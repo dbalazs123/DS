@@ -11,9 +11,11 @@ uv sync                                       # env + library + dev tools
 uv run python projects/_example/pipeline.py   # run the worked example
 ```
 
-The example under `projects/_example/pipeline.py` chains one function from every
-stage — generate → save/load → validate → clean → feature → time-split → model →
-evaluate → visualize — and is the best single reference for how the pieces fit.
+The example under `projects/_example/pipeline.py` runs realistically dirty
+synthetic data (missing values, outliers, a categorical column, duplicate rows)
+through every stage — generate → save/load → validate → clean → feature →
+time-split → model → evaluate → visualize — and is the best single reference
+for how the pieces fit.
 
 ## Cookbook
 
