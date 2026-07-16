@@ -9,9 +9,11 @@ import pandas as pd
 import pytest
 
 from ds.features import (
+    apply_collapse_categories,
     fit_one_hot_categories,
     fit_ordinal_categories,
     fit_scale_params,
+    fit_topk_categories,
 )
 from ds.io import load_params, save_params
 from ds.pipeline import Pipeline, PipelineStep
@@ -151,6 +153,13 @@ def test_clip_and_flag_are_distinct_kinds_of_the_same_bounds(train_df: pd.DataFr
     assert Pipeline.from_dict(_through_json(flag.to_dict())).apply(fresh).equals(flagged)
 
 
+def test_collapse_step_matches_apply_collapse_categories(train_df: pd.DataFrame) -> None:
+    params = fit_topk_categories(train_df, ["region"], k=1)
+    pipeline = Pipeline(steps=(PipelineStep("collapse_categories", params),))
+    fresh = pd.DataFrame({"region": ["south", "north", "never_seen", None]})
+    assert pipeline.apply(fresh).equals(apply_collapse_categories(fresh, params))
+
+
 def test_flag_step_refuses_to_overwrite_existing_column(train_df: pd.DataFrame) -> None:
     bounds = fit_outlier_bounds(train_df, ["amount"])
     pipeline = Pipeline(steps=(PipelineStep("flag_outliers", bounds),))
@@ -176,6 +185,7 @@ def test_round_trip_preserves_step_order_and_every_kind(train_df: pd.DataFrame) 
             PipelineStep("flag_outliers", fit_outlier_bounds(train_df, ["amount"])),
             PipelineStep("clip_outliers", fit_outlier_bounds(train_df, ["amount"], factor=3.0)),
             PipelineStep("impute_missing", fit_impute_values(train_df, ["amount"])),
+            PipelineStep("collapse_categories", fit_topk_categories(train_df, ["region"], k=1)),
             PipelineStep("one_hot_encode", fit_one_hot_categories(train_df, ["region"])),
             PipelineStep(
                 "ordinal_encode",

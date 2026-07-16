@@ -16,7 +16,7 @@ working set of the most-reached-for helpers. Built out so far:
 | Validate | `ds.validation` | `require_columns`, `assert_no_nulls`, `assert_in_range`, `assert_in_set`, `assert_dtypes`, `check_schema` |
 | Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns`, `drop_duplicate_rows`, `coerce_dtypes`, `flag_outliers`, `clip_outliers`, `impute_missing` + split-safe pairs `fit_outlier_bounds`/`apply_flag_outliers`/`apply_clip_outliers`, `fit_impute_values`/`apply_impute_missing` |
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
-| Feature | `ds.features` | `add_datetime_features` (incl. `_hour`), `one_hot_encode`, `ordinal_encode`, `scale_features`, `bin_column` + split-safe pairs `fit_one_hot_categories`/`apply_one_hot_encode`, `fit_ordinal_categories`/`apply_ordinal_encode`, `fit_scale_params`/`apply_scale_features` |
+| Feature | `ds.features` | `add_datetime_features` (incl. `_hour`), `one_hot_encode`, `ordinal_encode`, `collapse_categories` (top-k + "other"), `scale_features`, `bin_column` + split-safe pairs `fit_one_hot_categories`/`apply_one_hot_encode`, `fit_ordinal_categories`/`apply_ordinal_encode`, `fit_topk_categories`/`apply_collapse_categories`, `fit_scale_params`/`apply_scale_features` |
 | Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `fit_baseline` (mean / naive-last / seasonal-naive), `save_model`/`load_model` (joblib persistence), `count_tokens` |
 | Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics`, `cross_validate_by_time` (rolling origin), `cross_validate_kfold`, `compare_models` |
 | Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_confusion_matrix`, `plot_residuals`, `plot_model_comparison` |
@@ -115,12 +115,14 @@ orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
   as its first consumer. Intended future extras (e.g. a statsmodels-backed
   `timeseries`) live here until that code exists.
 
-**Next up:** the plan of record is complete (P1–P4 all done), so the demand
-loop decides what's next: either friction item 4 (the high-cardinality
-encoder — the one open item with a real consumer waiting in `nyc_taxis`) or,
-better still, a **second real-data project** to regenerate demand before more
-library work. Deprioritized until a project pulls them: more EDA helpers,
-more viz, more cookbook recipes, more CLI.
+**Next up:** the plan of record is complete (P1–P4 all done) and the
+`nyc_taxis` friction backlog is fully served (items 1–4 all promoted and
+consumed), so the next work is a **second real-data project** to regenerate
+demand before more library work — ideally classification on a
+GitHub-reachable public dataset, to exercise the untouched
+`classification_metrics`/`confusion_frame`/`per_class_metrics`/
+`plot_confusion_matrix` surface. Deprioritized until a project pulls them:
+more EDA helpers, more viz, more cookbook recipes, more CLI.
 
 ## Friction backlog (from `projects/nyc_taxis`)
 
@@ -135,9 +137,17 @@ Demand-driven candidates, in observed-pain order:
 3. ~~**No baseline estimators**~~ — **resolved in P3**:
    `ds.modeling.baseline.fit_baseline`; the project's hand-rolled train-mean
    baseline is gone.
-4. **No high-cardinality strategy** — the ~200-level zone columns can't be
-   one-hot or ordinal encoded; the project fell back to boroughs. Candidate:
-   a `fit_*/apply_*` frequency or top-k("other") encoder in `ds.features`.
+4. ~~**No high-cardinality strategy**~~ — **resolved**:
+   `ds.features.fit_topk_categories`/`apply_collapse_categories` keep a
+   column's top-k levels and collapse the rest (and anything unseen at
+   scoring time) to `"other"`, so the existing one-hot/ordinal encoders take
+   it from there. Top-k+"other" was chosen over frequency encoding because it
+   preserves level identity (what a linear fare model needs) and composes
+   with the existing encoders instead of adding a parallel numeric path. The
+   project now consumes the zone columns it originally dropped, and they earn
+   their place: vs a boroughs-only variant on the same held-out window, MAE
+   2.62 → 2.26 (−14%), r² 0.729 → 0.765 (k=15, asserted in the project's
+   end-to-end test).
 5. **Pipeline fit-side observation** (for the settled pure-composition
    decision below): assembling the scoring pipeline required manually fitting
    each parameter set on a progressively transformed train frame
@@ -168,18 +178,19 @@ proof on data the library didn't design.
 
 ### Fit/apply (split-safe) transforms *(stands)*
 
-The five statistic-learning transforms (`impute_missing`, `scale_features`,
-`clip_outliers`/`flag_outliers`, `one_hot_encode`, `ordinal_encode`) each have
-a paired `fit_*`/`apply_*` form: `fit_*` learns parameters from one frame and
-returns a small frozen dataclass, `apply_*` applies them to any frame. The
-single-call forms remain as fit-and-apply-on-the-same-frame conveniences and
-are implemented as exactly that, so the two forms can't drift. Category
-vocabularies are fixed at fit time (unseen categories → all-zero indicators /
-`-1` codes).
+The six statistic-learning transforms (`impute_missing`, `scale_features`,
+`clip_outliers`/`flag_outliers`, `one_hot_encode`, `ordinal_encode`,
+`collapse_categories`) each have a paired `fit_*`/`apply_*` form: `fit_*`
+learns parameters from one frame and returns a small frozen dataclass,
+`apply_*` applies them to any frame. The single-call forms remain as
+fit-and-apply-on-the-same-frame conveniences and are implemented as exactly
+that, so the two forms can't drift. Category vocabularies are fixed at fit
+time (unseen categories → all-zero indicators / `-1` codes / the `"other"`
+label).
 
 ### Persistable fit parameters *(revisited: scope was too narrow)*
 
-The five `fit_*` dataclasses carry validated `to_dict`/`from_dict` round-trips
+The six `fit_*` dataclasses carry validated `to_dict`/`from_dict` round-trips
 and `ds.io.save_params`/`load_params` persist them as strict JSON. Decisions
 that stand: per-class methods rather than a generic `asdict` mechanism (honest
 types under `mypy --strict`, per-class edge-case handling next to each

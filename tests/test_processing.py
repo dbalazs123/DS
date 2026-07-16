@@ -14,14 +14,18 @@ from ds.features import (
     OneHotCategories,
     OrdinalCategories,
     ScaleParams,
+    TopKCategories,
     add_datetime_features,
+    apply_collapse_categories,
     apply_one_hot_encode,
     apply_ordinal_encode,
     apply_scale_features,
     bin_column,
+    collapse_categories,
     fit_one_hot_categories,
     fit_ordinal_categories,
     fit_scale_params,
+    fit_topk_categories,
     one_hot_encode,
     ordinal_encode,
     scale_features,
@@ -405,6 +409,61 @@ def test_ordinal_wrapper_matches_fit_apply() -> None:
     assert ordinal_encode(df).equals(apply_ordinal_encode(df, fit_ordinal_categories(df)))
 
 
+def test_fit_topk_categories_keeps_most_frequent_with_deterministic_ties() -> None:
+    df = pd.DataFrame({"zone": ["a", "a", "a", "c", "c", "b", "b", "d", None]})
+    params = fit_topk_categories(df, k=2)
+    # "b" and "c" tie on count; ascending value breaks the tie, nulls don't count.
+    assert params.categories == {"zone": ("a", "b")}
+    assert params.other_label == "other"
+
+
+def test_apply_collapse_categories_collapses_rare_and_unseen_keeps_nulls() -> None:
+    train = pd.DataFrame({"zone": ["a", "a", "b", "b", "c", "d"]})
+    params = fit_topk_categories(train, ["zone"], k=2)
+    test = pd.DataFrame({"zone": ["a", "d", "never_seen", None]})
+    out = apply_collapse_categories(test, params)
+    # Rare-at-fit and unseen values both collapse; missing stays missing for
+    # the imputation step to handle.
+    assert out["zone"].tolist()[:3] == ["a", "other", "other"]
+    assert pd.isna(out["zone"].iloc[3])
+    with pytest.raises(KeyError):
+        apply_collapse_categories(pd.DataFrame({"other": ["x"]}), params)
+
+
+def test_collapsed_column_feeds_one_hot_with_a_closed_vocabulary() -> None:
+    # The intended composition for high-cardinality columns: collapse to
+    # top-k + "other", then one-hot the now-small vocabulary.
+    train = pd.DataFrame({"zone": ["a", "a", "b", "c", "d", "e"]})
+    params = fit_topk_categories(train, ["zone"], k=1)
+    collapsed_train = apply_collapse_categories(train, params)
+    vocabulary = fit_one_hot_categories(collapsed_train, ["zone"])
+    assert vocabulary.categories["zone"] == ("a", "other")
+    test = apply_collapse_categories(pd.DataFrame({"zone": ["z", "a"]}), params)
+    encoded = apply_one_hot_encode(test, vocabulary)
+    assert list(encoded.columns) == ["zone_a", "zone_other"]
+    assert encoded["zone_other"].tolist() == [True, False]
+
+
+def test_collapse_wrapper_matches_fit_apply_incl_category_dtype() -> None:
+    df = pd.DataFrame({"c": pd.Categorical(["a", "a", "b", None])})
+    params = fit_topk_categories(df, ["c"], k=1)
+    applied = apply_collapse_categories(df, params)
+    assert collapse_categories(df, ["c"], k=1).equals(applied)
+    assert applied["c"].dtype == object  # category dtype recoded to plain object
+
+
+def test_fit_topk_categories_small_column_and_bad_arguments() -> None:
+    df = pd.DataFrame({"c": ["a", "b"]})
+    # Fewer distinct values than k: everything is kept.
+    assert fit_topk_categories(df, k=10).categories == {"c": ("a", "b")}
+    with pytest.raises(ValueError, match="at least 1"):
+        fit_topk_categories(df, k=0)
+    with pytest.raises(ValueError, match="kept category"):
+        fit_topk_categories(pd.DataFrame({"c": ["other", "x"]}), k=2)
+    with pytest.raises(KeyError):
+        fit_topk_categories(df, ["nope"], k=1)
+
+
 def test_fit_scale_params_scales_test_with_train_statistics() -> None:
     train = pd.DataFrame({"x": [0.0, 10.0]})
     params = fit_scale_params(train, ["x"], method="minmax")
@@ -537,6 +596,20 @@ def test_one_hot_categories_round_trips_non_string_categories() -> None:
     assert apply_one_hot_encode(df, restored).equals(apply_one_hot_encode(df, categories))
 
 
+def test_topk_categories_round_trips_non_string_categories() -> None:
+    params = fit_topk_categories(
+        pd.DataFrame({"c": ["b", "a", "a"], "n": pd.array([2, 1, 1], dtype="int64")}),
+        columns=["c", "n"],
+        k=1,
+    )
+    restored = TopKCategories.from_dict(_through_json(params.to_dict()))
+    assert restored == params
+    assert all(isinstance(cats, tuple) for cats in restored.categories.values())
+    assert type(restored.categories["n"][0]) is int
+    df = pd.DataFrame({"c": ["a", "zzz"], "n": [1, 3]})
+    assert apply_collapse_categories(df, restored).equals(apply_collapse_categories(df, params))
+
+
 def test_ordinal_categories_round_trips() -> None:
     order = fit_ordinal_categories(
         pd.DataFrame({"size": ["M", "S"]}), categories={"size": ["S", "M", "L"]}
@@ -577,3 +650,8 @@ def test_from_dict_rejects_malformed_payloads() -> None:
         OneHotCategories.from_dict({**one_hot.to_dict(), "drop_first": 1})
     with pytest.raises(ValueError, match="list of categories"):
         OrdinalCategories.from_dict({"type": "OrdinalCategories", "categories": {"c": "abc"}})
+    topk = TopKCategories(categories={"c": ("a",)}, other_label="other").to_dict()
+    with pytest.raises(ValueError, match="string"):
+        TopKCategories.from_dict({**topk, "other_label": 3})
+    with pytest.raises(ValueError, match="silently merge"):
+        TopKCategories.from_dict({**topk, "other_label": "a"})

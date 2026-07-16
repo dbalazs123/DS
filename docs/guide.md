@@ -157,17 +157,24 @@ top_correlations(df, n=5)  # most correlated numeric pairs (redundancy / leakage
 from ds.features import (
     add_datetime_features,
     bin_column,
+    collapse_categories,
     one_hot_encode,
     ordinal_encode,
     scale_features,
 )
 
 df = add_datetime_features(df, "date")               # year, month, dayofweek, hour, ...
-df = one_hot_encode(df, ["category"])                # indicator columns
+df = collapse_categories(df, ["zone"], k=15)         # top-15 levels + "other"
+df = one_hot_encode(df, ["category", "zone"])        # indicator columns
 df = ordinal_encode(df, categories={"size": ["S", "M", "L"]})  # ranked codes
 df = scale_features(df, ["amount"], method="minmax")  # rescale to [0, 1]
 df = bin_column(df, "amount", bins=4, method="quantile")  # -> amount_bin
 ```
+
+`collapse_categories` is the high-cardinality strategy: a column with hundreds
+of levels (the taxi data's ~200 pickup/dropoff zones) keeps its `k` most
+frequent values and everything else — including values first seen at scoring
+time — becomes `"other"`, so the ordinary encoders can take it from there.
 
 The encoders and scaler learn their vocabulary/parameters from the frame
 they're given; for a train/test workflow use their `fit_*`/`apply_*` pairs —
@@ -217,10 +224,12 @@ train = apply_scale_features(train, scaling)
 test = apply_scale_features(test, scaling)           # train's centre/spread
 ```
 
-`apply_flag_outliers` and `apply_ordinal_encode` (paired with
-`fit_ordinal_categories`) follow the same pattern. Unseen categories one-hot
-encode as all zeros and ordinal-encode as `-1`; the single-call forms
-(`impute_missing`, `clip_outliers`, `scale_features`, ...) remain as
+`apply_flag_outliers`, `apply_ordinal_encode` (paired with
+`fit_ordinal_categories`) and `apply_collapse_categories` (paired with
+`fit_topk_categories`, for high-cardinality columns) follow the same pattern.
+Unseen categories one-hot encode as all zeros, ordinal-encode as `-1` and
+collapse to the `"other"` label; the single-call forms (`impute_missing`,
+`clip_outliers`, `scale_features`, ...) remain as
 fit-and-apply-on-the-same-frame conveniences for exploratory, pre-split work.
 The worked example (`projects/_example/pipeline.py`) runs this exact pattern
 end to end.

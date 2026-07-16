@@ -7,8 +7,9 @@ that was *not* generated to fit the toolkit.
 from March 2019, sampled from the NYC TLC trip records and mirrored in the
 [seaborn-data](https://github.com/mwaskom/seaborn-data) repository. It brings
 real quirks: missing payment types and boroughs, ~200-level pickup/dropoff
-zone columns (too many to one-hot — the model uses boroughs instead), and
-post-ride columns (`tip`, `tolls`, `total`) that would leak the target.
+zone columns (too many to one-hot directly — collapsed to their top-15 levels
++ `"other"` via `ds.features.fit_topk_categories`), and post-ride columns
+(`tip`, `tolls`, `total`) that would leak the target.
 
 The pipeline downloads the CSV once into `data/raw/` (git-ignored) and runs
 fetch → validate → explore → clean → chronological split →
@@ -18,13 +19,16 @@ model (`ds.modeling.persistence`) → score the held-out window from the
 plot.
 
 This project exists to run the workspace's demand loop: friction it surfaced
-in the library is recorded in [`ROADMAP.md`](../../ROADMAP.md), and three of
-its four items have since been promoted into the library and are consumed
+in the library is recorded in [`ROADMAP.md`](../../ROADMAP.md), and all four
+of its items have since been promoted into the library and are consumed
 here — model persistence (`ds.modeling.persistence`), `pickup_hour` from
-`add_datetime_features`, and the train-mean baseline
+`add_datetime_features`, the train-mean baseline
 (`ds.modeling.baseline.fit_baseline`, compared via
-`ds.evaluation.compare_models` + `ds.viz.plot_model_comparison`). Still open:
-a high-cardinality encoder for the ~200-level zone columns.
+`ds.evaluation.compare_models` + `ds.viz.plot_model_comparison`), and the
+top-k+"other" encoder (`ds.features.fit_topk_categories`) for the ~200-level
+zone columns the model originally had to drop. The zones earn their place:
+against a boroughs-only variant on the same held-out window, MAE improves
+from 2.62 to 2.26 (−14%) and r² from 0.729 to 0.765.
 
 ## Run
 
