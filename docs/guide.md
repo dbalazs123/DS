@@ -78,9 +78,19 @@ top_correlations(df, n=5)  # most correlated numeric pairs (redundancy / leakage
 ### Feature — `ds.features`
 
 ```python
-from ds.features import add_datetime_features
+from ds.features import (
+    add_datetime_features,
+    bin_column,
+    one_hot_encode,
+    ordinal_encode,
+    scale_features,
+)
 
-df = add_datetime_features(df, "date")   # year, month, dayofweek, ...
+df = add_datetime_features(df, "date")               # year, month, dayofweek, ...
+df = one_hot_encode(df, ["category"])                # indicator columns
+df = ordinal_encode(df, categories={"size": ["S", "M", "L"]})  # ranked codes
+df = scale_features(df, ["amount"], method="minmax")  # rescale to [0, 1]
+df = bin_column(df, "amount", bins=4, method="quantile")  # -> amount_bin
 ```
 
 ### Model — `ds.modeling`

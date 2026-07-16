@@ -6,7 +6,13 @@ import pandas as pd
 import pytest
 
 from ds.eda import missing_value_report, summarize, top_correlations
-from ds.features import add_datetime_features
+from ds.features import (
+    add_datetime_features,
+    bin_column,
+    one_hot_encode,
+    ordinal_encode,
+    scale_features,
+)
 from ds.preprocessing import (
     clip_outliers,
     coerce_dtypes,
@@ -183,3 +189,68 @@ def test_add_datetime_features(sample_df: pd.DataFrame) -> None:
 def test_add_datetime_features_missing_column(sample_df: pd.DataFrame) -> None:
     with pytest.raises(KeyError):
         add_datetime_features(sample_df, "nope")
+
+
+def test_one_hot_encode_replaces_categorical() -> None:
+    df = pd.DataFrame({"n": [1, 2], "c": ["a", "b"]})
+    out = one_hot_encode(df)
+    assert "c" not in out.columns
+    assert {"c_a", "c_b"} <= set(out.columns)
+    assert "n" in out.columns  # numeric column untouched
+
+
+def test_one_hot_encode_drop_first_and_unknown_column() -> None:
+    df = pd.DataFrame({"c": ["a", "b", "c"]})
+    out = one_hot_encode(df, drop_first=True)
+    assert "c_a" not in out.columns  # first level dropped
+    with pytest.raises(KeyError):
+        one_hot_encode(df, ["nope"])
+
+
+def test_ordinal_encode_respects_explicit_order() -> None:
+    df = pd.DataFrame({"size": ["M", "S", "L", None]})
+    out = ordinal_encode(df, categories={"size": ["S", "M", "L"]})
+    assert out["size"].tolist() == [1, 0, 2, -1]  # NaN -> -1
+
+
+def test_ordinal_encode_defaults_to_sorted_order() -> None:
+    df = pd.DataFrame({"c": ["b", "a", "b"]})
+    out = ordinal_encode(df)
+    assert out["c"].tolist() == [1, 0, 1]
+
+
+def test_scale_features_standard_zero_mean() -> None:
+    df = pd.DataFrame({"x": [1.0, 2.0, 3.0], "c": ["a", "b", "c"]})
+    out = scale_features(df)
+    assert out["x"].mean() == pytest.approx(0.0)
+    assert out["c"].tolist() == ["a", "b", "c"]  # non-numeric untouched
+
+
+def test_scale_features_minmax_and_constant_column() -> None:
+    df = pd.DataFrame({"x": [10.0, 20.0, 30.0], "k": [5.0, 5.0, 5.0]})
+    out = scale_features(df, method="minmax")
+    assert out["x"].tolist() == [0.0, 0.5, 1.0]
+    assert out["k"].tolist() == [0.0, 0.0, 0.0]  # constant -> zeros, not NaN
+
+
+def test_scale_features_non_numeric_raises() -> None:
+    with pytest.raises(ValueError, match="scaled"):
+        scale_features(pd.DataFrame({"c": ["a", "b"]}), ["c"])
+
+
+def test_bin_column_equal_width_adds_bin() -> None:
+    df = pd.DataFrame({"x": [1, 2, 3, 4]})
+    out = bin_column(df, "x", bins=2, labels=["low", "high"])
+    assert out["x_bin"].tolist() == ["low", "low", "high", "high"]
+
+
+def test_bin_column_quantile() -> None:
+    df = pd.DataFrame({"x": [1, 2, 3, 4, 5, 6, 7, 8]})
+    out = bin_column(df, "x", bins=4, method="quantile", drop=True)
+    assert "x" not in out.columns
+    assert out["x_bin"].nunique() == 4
+
+
+def test_bin_column_missing_column_raises() -> None:
+    with pytest.raises(KeyError):
+        bin_column(pd.DataFrame({"a": [1]}), "nope", bins=2)

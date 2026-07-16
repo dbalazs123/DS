@@ -16,7 +16,7 @@ some are still thin. Built out so far:
 | Validate | `ds.validation` | thin — `require_columns`, `assert_no_nulls` |
 | Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns`, `drop_duplicate_rows`, `coerce_dtypes`, `flag_outliers`, `clip_outliers`, `impute_missing` |
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
-| Feature | `ds.features` | thin — `add_datetime_features` |
+| Feature | `ds.features` | `add_datetime_features`, `one_hot_encode`, `ordinal_encode`, `scale_features`, `bin_column` |
 | Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `count_tokens` |
 | Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics` |
 | Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_confusion_matrix`, `plot_residuals` |
@@ -35,8 +35,8 @@ extra and must degrade gracefully.
 - **`ds.preprocessing`** — ✅ done (`coerce_dtypes`, `flag_outliers` /
   `clip_outliers`, `drop_duplicate_rows`, `impute_missing`, paired with
   `ds.viz.plot_outliers`).
-- **`ds.features`** — one-hot / ordinal categorical encoding; numeric scaling
-  wrappers; equal-width / quantile binning.
+- **`ds.features`** — ✅ done (`one_hot_encode`, `ordinal_encode`,
+  `scale_features`, `bin_column`).
 - **`ds.validation`** — assert a column's values fall in a range or an allowed
   set; assert expected dtypes; a lightweight expected-schema check (there's
   already a `pandera` dependency worth leaning on here).
