@@ -12,7 +12,7 @@ working set of the most-reached-for helpers. Built out so far:
 
 | Stage | Module | Status |
 |-------|--------|--------|
-| Acquire | `ds.io` | `load_table`, `save_table` (csv/tsv/parquet/json/jsonl), `load_raw`, `save_processed` |
+| Acquire | `ds.io` | `load_table`, `save_table` (csv/tsv/parquet/json/jsonl), `load_raw`, `save_processed`, `save_params`/`load_params` (fitted-parameter JSON) |
 | Validate | `ds.validation` | `require_columns`, `assert_no_nulls`, `assert_in_range`, `assert_in_set`, `assert_dtypes`, `check_schema` |
 | Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns`, `drop_duplicate_rows`, `coerce_dtypes`, `flag_outliers`, `clip_outliers`, `impute_missing` + split-safe pairs `fit_outlier_bounds`/`apply_flag_outliers`/`apply_clip_outliers`, `fit_impute_values`/`apply_impute_missing` |
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
@@ -88,6 +88,32 @@ implemented as exactly that, so the two forms can't drift.
   identical column sets on both splits) and `docs/guide.md` documents the
   pattern in a dedicated cookbook section.
 
+## Done — persistable fit parameters
+
+The five `fit_*` dataclasses (`OutlierBounds`, `ImputeValues`, `ScaleParams`,
+`OneHotCategories`, `OrdinalCategories`) each carry a `to_dict`/`from_dict`
+pair, and `ds.io.save_params`/`load_params` persist them as JSON — so a
+pipeline can save its fitted state alongside the model and score new incoming
+rows in a later run or another process. The worked example and the guide's
+split-safe cookbook section demonstrate the save-then-reload loop end to end.
+
+- **Per-class methods, not a generic mechanism** — chosen deliberately for
+  `mypy --strict`: a `dataclasses.asdict`/`fields`-driven round-trip types as
+  `dict[str, Any] → T` with `cast`s for the `Literal` fields and no place to
+  validate per-field, whereas explicit methods give concrete return types and
+  put each class's edge-case handling (non-finite bounds, numpy scalar fills,
+  tuple vocabularies) next to its definition. The shared plumbing (scalar
+  encode/decode, payload-shape checks) lives in the private `ds._serde`
+  module, and `ds.io` stays decoupled by typing `save_params`/`load_params`
+  against a `FittedParams` protocol instead of importing the dataclasses.
+- **Strict JSON on disk** — non-finite floats (JSON has no `inf`/`nan`
+  literal) are written as a tagged `{"__float__": "inf"}` mapping rather than
+  Python's non-standard bare literals (`allow_nan=False` enforces it); numpy
+  scalars are unwrapped via `.item()`; vocabulary tuples round-trip through
+  lists and are re-tupled on load. Every `from_dict` validates the type tag,
+  the exact field set and the field shapes, so a stale or hand-edited file
+  fails with a message naming what is wrong.
+
 ## Later / bigger bets
 
 - **API discoverability** — decide deliberately whether to curate a flat
@@ -99,13 +125,14 @@ implemented as exactly that, so the two forms can't drift.
   up — rather than a first pass.
 - **`ds` CLI** — grow beyond `new` (e.g. `ds check`, `ds run`) if it earns its
   keep.
-- **Persistable fit parameters — natural follow-on.** The `fit_*` dataclasses
-  live only in memory today; scoring new data in a later run (or another
-  process) needs them serialized. A small `to_dict`/`from_dict` (or JSON
-  round-trip via `ds.io`) on each parameter dataclass would let a pipeline
-  save its fitted state alongside the model. Worth designing together with
-  a decision on whether the pairs should also compose into a single
-  fit-once/apply-many "pipeline" object once more than one project needs it.
+- **Composable fit/apply pipeline object — open question.** With the pairs
+  persistable, the remaining friction is that a scoring run re-strings the
+  `apply_*` calls (and their order) by hand, as the worked example's
+  fresh-rows step shows. A fit-once/apply-many "pipeline" object could own
+  the ordered list of fitted parameters, apply them in one call, and persist
+  itself via the existing `save_params`/`load_params` machinery. Decide once
+  more than one project needs it — the per-pair API stays the primitive
+  either way.
 
 ## Working agreement
 

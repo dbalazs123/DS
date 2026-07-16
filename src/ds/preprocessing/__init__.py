@@ -10,6 +10,8 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 
+from ds._serde import as_float, check_payload, check_str_mapping, decode_scalar, encode_scalar
+
 _NON_SNAKE = re.compile(r"[^0-9a-zA-Z]+")
 
 OutlierMethod = Literal["iqr", "zscore"]
@@ -34,6 +36,58 @@ class OutlierBounds:
     method: OutlierMethod
     factor: float
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dict representation.
+
+        Non-finite bounds (``±inf`` from an all-null fit) are encoded as
+        tagged mappings, since strict JSON has no literal for them. Persist
+        the result with :func:`ds.io.save_params` or rebuild the dataclass
+        with :meth:`from_dict`.
+
+        Returns:
+            A dict that round-trips through :meth:`from_dict`.
+        """
+        return {
+            "type": "OutlierBounds",
+            "bounds": {
+                col: [encode_scalar(lower), encode_scalar(upper)]
+                for col, (lower, upper) in self.bounds.items()
+            },
+            "method": self.method,
+            "factor": self.factor,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> OutlierBounds:
+        """Rebuild an :class:`OutlierBounds` from :meth:`to_dict` output.
+
+        Args:
+            data: A mapping as produced by :meth:`to_dict`.
+
+        Returns:
+            The reconstructed :class:`OutlierBounds`.
+
+        Raises:
+            ValueError: If ``data`` is not a well-formed ``OutlierBounds``
+                payload (wrong type tag, missing/unexpected fields, an unknown
+                method, or malformed bounds) — e.g. a stale or hand-edited file.
+        """
+        payload = check_payload(data, "OutlierBounds", frozenset({"bounds", "method", "factor"}))
+        method = payload["method"]
+        if method not in ("iqr", "zscore"):
+            raise ValueError(f"OutlierBounds.method must be 'iqr' or 'zscore', got {method!r}")
+        bounds: dict[str, tuple[float, float]] = {}
+        for col, pair in check_str_mapping(payload["bounds"], "bounds", "OutlierBounds").items():
+            if not isinstance(pair, Sequence) or isinstance(pair, str) or len(pair) != 2:
+                raise ValueError(f"OutlierBounds.bounds[{col!r}] must be a [lower, upper] pair")
+            lower, upper = (decode_scalar(edge) for edge in pair)
+            bounds[col] = (
+                as_float(lower, f"bounds[{col!r}]", "OutlierBounds"),
+                as_float(upper, f"bounds[{col!r}]", "OutlierBounds"),
+            )
+        factor = as_float(payload["factor"], "factor", "OutlierBounds")
+        return cls(bounds=bounds, method=method, factor=factor)
+
 
 @dataclass(frozen=True)
 class ImputeValues:
@@ -46,6 +100,50 @@ class ImputeValues:
 
     fill_values: Mapping[str, Any]
     strategy: ImputeStrategy
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dict representation.
+
+        Numpy scalar fills (e.g. a ``np.float64`` median) are unwrapped to
+        plain Python values and non-finite floats are tag-encoded, so the
+        result survives a strict-JSON round-trip. Fill values must otherwise
+        be JSON-representable (str/int/float/bool/``None``). Persist the
+        result with :func:`ds.io.save_params` or rebuild the dataclass with
+        :meth:`from_dict`.
+
+        Returns:
+            A dict that round-trips through :meth:`from_dict`.
+        """
+        return {
+            "type": "ImputeValues",
+            "fill_values": {col: encode_scalar(fill) for col, fill in self.fill_values.items()},
+            "strategy": self.strategy,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> ImputeValues:
+        """Rebuild an :class:`ImputeValues` from :meth:`to_dict` output.
+
+        Args:
+            data: A mapping as produced by :meth:`to_dict`.
+
+        Returns:
+            The reconstructed :class:`ImputeValues`.
+
+        Raises:
+            ValueError: If ``data`` is not a well-formed ``ImputeValues``
+                payload (wrong type tag, missing/unexpected fields, or an
+                unknown strategy) — e.g. a stale or hand-edited file.
+        """
+        payload = check_payload(data, "ImputeValues", frozenset({"fill_values", "strategy"}))
+        strategy = payload["strategy"]
+        if strategy not in ("mean", "median", "most_frequent", "constant"):
+            raise ValueError(f"ImputeValues.strategy is not a known strategy: {strategy!r}")
+        fills = check_str_mapping(payload["fill_values"], "fill_values", "ImputeValues")
+        return cls(
+            fill_values={col: decode_scalar(fill) for col, fill in fills.items()},
+            strategy=strategy,
+        )
 
 
 def standardize_column_names(df: pd.DataFrame) -> pd.DataFrame:

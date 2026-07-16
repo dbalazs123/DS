@@ -1,21 +1,105 @@
-"""Data acquisition: loading and saving tabular data.
+"""Data acquisition: loading and saving tabular data and fitted parameters.
 
 A thin, format-aware layer over pandas that infers the format from the file
 extension so calling code never branches on ``.csv`` vs ``.parquet``. The
 :func:`load_raw` / :func:`save_processed` pair builds on it to resolve paths
-against the project's ``data/`` layout (see :mod:`ds.config`).
+against the project's ``data/`` layout (see :mod:`ds.config`), and the
+:func:`save_params` / :func:`load_params` pair persists the ``fit_*``
+parameter dataclasses as JSON so a pipeline's fitted state can be saved
+alongside its model and reloaded in a later run.
 """
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, Self, TypeVar
 
 import pandas as pd
 
 from ds.config import Settings, get_settings
 
 SUPPORTED_SUFFIXES = (".csv", ".tsv", ".parquet", ".json", ".jsonl")
+
+
+class FittedParams(Protocol):
+    """Any fitted-parameter dataclass with a validated dict round-trip.
+
+    The ``fit_*`` dataclasses (:class:`ds.preprocessing.OutlierBounds`,
+    :class:`ds.preprocessing.ImputeValues`, :class:`ds.features.ScaleParams`,
+    :class:`ds.features.OneHotCategories` and
+    :class:`ds.features.OrdinalCategories`) all satisfy this protocol.
+    """
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dict representation."""
+        ...  # pragma: no cover - protocol stub
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Self:
+        """Rebuild the dataclass from :meth:`to_dict` output, validating it."""
+        ...  # pragma: no cover - protocol stub
+
+
+P = TypeVar("P", bound=FittedParams)
+
+
+def save_params(params: FittedParams, path: str | Path) -> Path:
+    """Save a fitted-parameter dataclass as JSON, creating parent directories.
+
+    The file is strict JSON (``allow_nan=False``): non-finite values are
+    tag-encoded by the dataclass's ``to_dict``, never written as the invalid
+    ``Infinity``/``NaN`` literals. Reload with :func:`load_params`.
+
+    Args:
+        params: A ``fit_*`` result, e.g. :class:`ds.preprocessing.OutlierBounds`
+            or :class:`ds.features.ScaleParams`.
+        path: Destination path; must end in ``.json``.
+
+    Returns:
+        The path written to.
+
+    Raises:
+        ValueError: If ``path`` does not have a ``.json`` extension.
+    """
+    path = Path(path)
+    if path.suffix.lower() != ".json":
+        raise ValueError(f"Unsupported extension {path.suffix!r}; parameters are saved as .json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(params.to_dict(), indent=2, allow_nan=False) + "\n")
+    return path
+
+
+def load_params(path: str | Path, cls: type[P]) -> P:
+    """Load a fitted-parameter dataclass saved by :func:`save_params`.
+
+    The payload is validated by the class's ``from_dict``, so loading a file
+    that holds a different parameter type — or a stale/hand-edited one —
+    fails with a clear error instead of building a broken object.
+
+    Args:
+        path: Path to a ``.json`` file written by :func:`save_params`.
+        cls: The expected dataclass, e.g. ``OutlierBounds``.
+
+    Returns:
+        The reconstructed parameters, as an instance of ``cls``.
+
+    Raises:
+        FileNotFoundError: If ``path`` does not exist.
+        ValueError: If the extension is not ``.json``, the file is not valid
+            JSON, or the payload is not a well-formed ``cls`` representation.
+    """
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(path)
+    if path.suffix.lower() != ".json":
+        raise ValueError(f"Unsupported extension {path.suffix!r}; parameters are saved as .json")
+    try:
+        payload = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{path} is not valid JSON: {exc}") from exc
+    return cls.from_dict(payload)
 
 
 def load_table(path: str | Path, **kwargs: Any) -> pd.DataFrame:
@@ -151,8 +235,11 @@ def save_processed(
 
 __all__ = [
     "SUPPORTED_SUFFIXES",
+    "FittedParams",
+    "load_params",
     "load_raw",
     "load_table",
+    "save_params",
     "save_processed",
     "save_table",
 ]

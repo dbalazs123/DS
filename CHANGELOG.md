@@ -7,6 +7,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Persistable fit parameters: every `fit_*` dataclass (`OutlierBounds`,
+  `ImputeValues`, `ScaleParams`, `OneHotCategories`, `OrdinalCategories`) now
+  has a validated `to_dict`/`from_dict` round-trip, and `ds.io` gained
+  `save_params`/`load_params` (plus the `FittedParams` protocol) to persist
+  them as strict JSON — so a pipeline can save its fitted state alongside the
+  model and score new rows in a later run or another process. Numpy scalar
+  fills are stored as plain numbers, non-finite bounds as tagged mappings
+  (JSON has no `inf`/`nan` literal), and vocabulary tuples round-trip through
+  lists; `from_dict` validates the payload so a stale, hand-edited or
+  wrong-type file fails with a clear error. Shared encode/decode plumbing
+  lives in the private `ds._serde` module.
 - Split-safe `fit_*`/`apply_*` pairs for every statistic-learning transform,
   each returning/consuming a small frozen parameters dataclass so statistics
   can be fitted on the training split and reused on test data or new rows:
@@ -45,6 +56,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `nbstripout` pre-commit hook to strip notebook outputs before they reach git.
 
 ### Changed
+- `projects/_example/pipeline.py` now saves all five fitted parameter objects
+  next to its processed data with `save_params` and rebuilds them from disk
+  with `load_params` to score fresh rows that did not exist at fit time
+  (including a missing and an unseen region), closing the "new incoming rows"
+  loop; `tests/test_example.py` asserts the reloaded state matches the fitted
+  state and the fresh rows encode to the training feature columns.
+  `docs/guide.md`'s split-safe cookbook section documents the pattern.
 - `projects/_example/pipeline.py` now splits chronologically *before* any
   statistic-learning transform and runs clip → impute → one-hot → scale as
   fit-on-train/apply-to-both via the new `fit_*`/`apply_*` pairs, so the

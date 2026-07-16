@@ -8,6 +8,15 @@ from typing import Any, Literal
 
 import pandas as pd
 
+from ds._serde import (
+    as_bool,
+    as_float,
+    check_payload,
+    check_str_mapping,
+    decode_scalar,
+    encode_scalar,
+)
+
 ScaleMethod = Literal["standard", "minmax"]
 BinMethod = Literal["width", "quantile"]
 
@@ -31,6 +40,54 @@ class ScaleParams:
     spread: Mapping[str, float]
     method: ScaleMethod
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dict representation.
+
+        Persist the result with :func:`ds.io.save_params` or rebuild the
+        dataclass with :meth:`from_dict`.
+
+        Returns:
+            A dict that round-trips through :meth:`from_dict`.
+        """
+        return {
+            "type": "ScaleParams",
+            "center": {col: encode_scalar(value) for col, value in self.center.items()},
+            "spread": {col: encode_scalar(value) for col, value in self.spread.items()},
+            "method": self.method,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> ScaleParams:
+        """Rebuild a :class:`ScaleParams` from :meth:`to_dict` output.
+
+        Args:
+            data: A mapping as produced by :meth:`to_dict`.
+
+        Returns:
+            The reconstructed :class:`ScaleParams`.
+
+        Raises:
+            ValueError: If ``data`` is not a well-formed ``ScaleParams``
+                payload (wrong type tag, missing/unexpected fields, an unknown
+                method, or centre/spread naming different columns) — e.g. a
+                stale or hand-edited file.
+        """
+        payload = check_payload(data, "ScaleParams", frozenset({"center", "spread", "method"}))
+        method = payload["method"]
+        if method not in ("standard", "minmax"):
+            raise ValueError(f"ScaleParams.method must be 'standard' or 'minmax', got {method!r}")
+        center = {
+            col: as_float(decode_scalar(value), f"center[{col!r}]", "ScaleParams")
+            for col, value in check_str_mapping(payload["center"], "center", "ScaleParams").items()
+        }
+        spread = {
+            col: as_float(decode_scalar(value), f"spread[{col!r}]", "ScaleParams")
+            for col, value in check_str_mapping(payload["spread"], "spread", "ScaleParams").items()
+        }
+        if set(center) != set(spread):
+            raise ValueError("ScaleParams.center and .spread must name the same columns")
+        return cls(center=center, spread=spread, method=method)
+
 
 @dataclass(frozen=True)
 class OneHotCategories:
@@ -46,6 +103,50 @@ class OneHotCategories:
     drop_first: bool
     dummy_na: bool
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dict representation.
+
+        Category values must be JSON-representable scalars
+        (str/int/float/bool/``None``); numpy scalars are unwrapped and the
+        tuples become lists (restored by :meth:`from_dict`). Persist the
+        result with :func:`ds.io.save_params` or rebuild the dataclass with
+        :meth:`from_dict`.
+
+        Returns:
+            A dict that round-trips through :meth:`from_dict`.
+        """
+        return {
+            "type": "OneHotCategories",
+            "categories": _encode_categories(self.categories),
+            "drop_first": self.drop_first,
+            "dummy_na": self.dummy_na,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> OneHotCategories:
+        """Rebuild a :class:`OneHotCategories` from :meth:`to_dict` output.
+
+        Args:
+            data: A mapping as produced by :meth:`to_dict`.
+
+        Returns:
+            The reconstructed :class:`OneHotCategories`.
+
+        Raises:
+            ValueError: If ``data`` is not a well-formed ``OneHotCategories``
+                payload (wrong type tag, missing/unexpected fields, non-bool
+                flags, or a malformed vocabulary) — e.g. a stale or
+                hand-edited file.
+        """
+        payload = check_payload(
+            data, "OneHotCategories", frozenset({"categories", "drop_first", "dummy_na"})
+        )
+        return cls(
+            categories=_decode_categories(payload["categories"], "OneHotCategories"),
+            drop_first=as_bool(payload["drop_first"], "drop_first", "OneHotCategories"),
+            dummy_na=as_bool(payload["dummy_na"], "dummy_na", "OneHotCategories"),
+        )
+
 
 @dataclass(frozen=True)
 class OrdinalCategories:
@@ -57,6 +158,53 @@ class OrdinalCategories:
     """
 
     categories: Mapping[str, tuple[Any, ...]]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dict representation.
+
+        Category values must be JSON-representable scalars
+        (str/int/float/bool/``None``); numpy scalars are unwrapped and the
+        tuples become lists (restored by :meth:`from_dict`). Persist the
+        result with :func:`ds.io.save_params` or rebuild the dataclass with
+        :meth:`from_dict`.
+
+        Returns:
+            A dict that round-trips through :meth:`from_dict`.
+        """
+        return {"type": "OrdinalCategories", "categories": _encode_categories(self.categories)}
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> OrdinalCategories:
+        """Rebuild an :class:`OrdinalCategories` from :meth:`to_dict` output.
+
+        Args:
+            data: A mapping as produced by :meth:`to_dict`.
+
+        Returns:
+            The reconstructed :class:`OrdinalCategories`.
+
+        Raises:
+            ValueError: If ``data`` is not a well-formed ``OrdinalCategories``
+                payload (wrong type tag, missing/unexpected fields, or a
+                malformed vocabulary) — e.g. a stale or hand-edited file.
+        """
+        payload = check_payload(data, "OrdinalCategories", frozenset({"categories"}))
+        return cls(categories=_decode_categories(payload["categories"], "OrdinalCategories"))
+
+
+def _encode_categories(categories: Mapping[str, tuple[Any, ...]]) -> dict[str, list[Any]]:
+    """Encode a per-column vocabulary as JSON-safe lists of scalars."""
+    return {col: [encode_scalar(cat) for cat in cats] for col, cats in categories.items()}
+
+
+def _decode_categories(value: Any, type_name: str) -> dict[str, tuple[Any, ...]]:
+    """Decode and validate a per-column vocabulary back into tuples."""
+    decoded: dict[str, tuple[Any, ...]] = {}
+    for col, cats in check_str_mapping(value, "categories", type_name).items():
+        if not isinstance(cats, Sequence) or isinstance(cats, str):
+            raise ValueError(f"{type_name}.categories[{col!r}] must be a list of categories")
+        decoded[col] = tuple(decode_scalar(cat) for cat in cats)
+    return decoded
 
 
 def add_datetime_features(df: pd.DataFrame, column: str, *, drop: bool = False) -> pd.DataFrame:
