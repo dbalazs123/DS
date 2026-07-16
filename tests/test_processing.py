@@ -7,7 +7,15 @@ import pytest
 
 from ds.eda import missing_value_report, summarize, top_correlations
 from ds.features import add_datetime_features
-from ds.preprocessing import drop_constant_columns, standardize_column_names
+from ds.preprocessing import (
+    clip_outliers,
+    coerce_dtypes,
+    drop_constant_columns,
+    drop_duplicate_rows,
+    flag_outliers,
+    impute_missing,
+    standardize_column_names,
+)
 from ds.validation import DataValidationError, assert_no_nulls, require_columns
 
 
@@ -36,6 +44,94 @@ def test_drop_constant_columns(sample_df: pd.DataFrame) -> None:
     out = drop_constant_columns(sample_df)
     assert "constant" not in out.columns
     assert "category" in out.columns
+
+
+def test_drop_duplicate_rows_default_keeps_first() -> None:
+    df = pd.DataFrame({"a": [1, 1, 2], "b": ["x", "x", "y"]})
+    out = drop_duplicate_rows(df)
+    assert len(out) == 2
+    assert list(out["a"]) == [1, 2]
+
+
+def test_drop_duplicate_rows_subset_and_keep_false() -> None:
+    df = pd.DataFrame({"id": [1, 1, 2], "val": [10, 99, 20]})
+    out = drop_duplicate_rows(df, ["id"], keep=False)
+    # Both rows sharing id==1 are dropped when keep=False.
+    assert list(out["id"]) == [2]
+
+
+def test_drop_duplicate_rows_unknown_subset_raises() -> None:
+    with pytest.raises(KeyError):
+        drop_duplicate_rows(pd.DataFrame({"a": [1]}), ["nope"])
+
+
+def test_coerce_dtypes_casts_columns() -> None:
+    df = pd.DataFrame({"n": ["1", "2"], "c": ["a", "b"]})
+    out = coerce_dtypes(df, {"n": "int64", "c": "category"})
+    assert out["n"].dtype == "int64"
+    assert out["c"].dtype == "category"
+
+
+def test_coerce_dtypes_errors_ignore_leaves_column() -> None:
+    df = pd.DataFrame({"n": ["1", "oops"]})
+    out = coerce_dtypes(df, {"n": "int64"}, errors="ignore")
+    assert out["n"].dtype == object
+
+
+def test_coerce_dtypes_unknown_column_raises() -> None:
+    with pytest.raises(KeyError):
+        coerce_dtypes(pd.DataFrame({"a": [1]}), {"missing": "int64"})
+
+
+def test_flag_outliers_iqr_detects_extreme_value() -> None:
+    df = pd.DataFrame({"x": [1, 2, 3, 4, 5, 100], "label": list("abcdef")})
+    flags = flag_outliers(df)
+    # Only the numeric column is checked and only the 100 is flagged.
+    assert list(flags.columns) == ["x"]
+    assert flags["x"].tolist() == [False, False, False, False, False, True]
+
+
+def test_flag_outliers_zscore_and_ignores_nulls() -> None:
+    df = pd.DataFrame({"x": [10.0, 10.0, 10.0, 10.0, 10.0, None, 1000.0]})
+    flags = flag_outliers(df, method="zscore", factor=2.0)
+    assert bool(flags["x"].iloc[6]) is True  # the 1000 is far from the mean
+    assert bool(flags["x"].iloc[5]) is False  # NaN is never an outlier
+
+
+def test_flag_outliers_non_numeric_column_raises() -> None:
+    with pytest.raises(ValueError, match="non-numeric"):
+        flag_outliers(pd.DataFrame({"c": ["a", "b"]}), ["c"])
+
+
+def test_clip_outliers_winsorizes_without_dropping_rows() -> None:
+    df = pd.DataFrame({"x": [1, 2, 3, 4, 5, 100]})
+    out = clip_outliers(df)
+    assert len(out) == len(df)
+    assert out["x"].max() < 100  # the extreme value was pulled in
+
+
+def test_impute_missing_mean_fills_numeric_only() -> None:
+    df = pd.DataFrame({"x": [1.0, None, 3.0], "c": ["a", None, "a"]})
+    out = impute_missing(df)  # default mean, numeric columns only
+    assert out["x"].iloc[1] == pytest.approx(2.0)
+    assert pd.isna(out["c"].iloc[1])  # non-numeric left untouched
+
+
+def test_impute_missing_most_frequent_on_any_dtype() -> None:
+    df = pd.DataFrame({"c": ["a", "a", None, "b"]})
+    out = impute_missing(df, strategy="most_frequent")
+    assert out["c"].iloc[2] == "a"
+
+
+def test_impute_missing_constant_uses_fill_value() -> None:
+    df = pd.DataFrame({"c": ["a", None]})
+    out = impute_missing(df, ["c"], strategy="constant", fill_value="?")
+    assert out["c"].iloc[1] == "?"
+
+
+def test_impute_missing_mean_on_non_numeric_raises() -> None:
+    with pytest.raises(ValueError, match="numeric"):
+        impute_missing(pd.DataFrame({"c": ["a", None]}), ["c"], strategy="mean")
 
 
 def test_summarize_shape(sample_df: pd.DataFrame) -> None:

@@ -13,6 +13,7 @@ from matplotlib.axes import Axes
 
 from ds.eda import missing_value_report
 from ds.evaluation import confusion_frame
+from ds.preprocessing import OutlierMethod, flag_outliers
 
 # A restrained, colour-blind-friendly categorical palette (Okabe-Ito).
 PALETTE = [
@@ -80,6 +81,41 @@ def plot_missingness(df: pd.DataFrame, *, ax: Axes | None = None) -> Axes:
     ax.set_xlim(0.0, 1.0)
     ax.invert_yaxis()  # keep the worst column at the top
     ax.set_title("Missing values by column")
+    return ax
+
+
+def plot_outliers(
+    df: pd.DataFrame,
+    columns: Sequence[str] | None = None,
+    *,
+    method: OutlierMethod = "iqr",
+    factor: float | None = None,
+    ax: Axes | None = None,
+) -> Axes:
+    """Plot the count of outliers per numeric column, worst first.
+
+    A horizontal bar chart of :func:`ds.preprocessing.flag_outliers`; columns
+    with no flagged values are omitted, mirroring how :func:`plot_missingness`
+    visualizes the missing-value report.
+
+    Args:
+        df: The DataFrame to inspect.
+        columns: Numeric columns to check; ``None`` uses every numeric column.
+        method: ``"iqr"`` or ``"zscore"`` — see
+            :func:`ds.preprocessing.flag_outliers`.
+        factor: Spread multiplier passed through to ``flag_outliers``.
+        ax: Existing Axes to draw on; a new figure is created when omitted.
+
+    Returns:
+        The Axes the chart was drawn on.
+    """
+    counts = flag_outliers(df, columns, method=method, factor=factor).sum()
+    counts = counts[counts > 0].sort_values(ascending=False)
+    ax = _resolve_ax(ax)
+    ax.barh(list(counts.index), counts.to_numpy(), color=PALETTE[3])
+    ax.set_xlabel("outlier count")
+    ax.invert_yaxis()  # keep the worst column at the top
+    ax.set_title(f"Outliers by column ({method})")
     return ax
 
 
@@ -166,6 +202,7 @@ __all__ = [
     "PALETTE",
     "plot_confusion_matrix",
     "plot_missingness",
+    "plot_outliers",
     "plot_residuals",
     "set_theme",
 ]

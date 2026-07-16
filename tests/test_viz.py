@@ -12,7 +12,12 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import pytest
 
-from ds.viz import plot_confusion_matrix, plot_missingness, plot_residuals
+from ds.viz import (
+    plot_confusion_matrix,
+    plot_missingness,
+    plot_outliers,
+    plot_residuals,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -28,6 +33,14 @@ def test_plot_missingness_bars_only_missing_columns() -> None:
     # One bar, for column "a" only.
     assert len(ax.patches) == 1
     assert [label.get_text() for label in ax.get_yticklabels()] == ["a"]
+
+
+def test_plot_outliers_bars_only_flagged_columns() -> None:
+    df = pd.DataFrame({"x": [1, 2, 3, 4, 5, 100], "clean": [1, 2, 3, 4, 5, 6]})
+    ax = plot_outliers(df)
+    # One bar, for column "x" only (the 100 is an outlier).
+    assert len(ax.patches) == 1
+    assert [label.get_text() for label in ax.get_yticklabels()] == ["x"]
 
 
 def test_plot_confusion_matrix_annotates_every_cell() -> None:

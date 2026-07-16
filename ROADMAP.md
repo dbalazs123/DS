@@ -14,12 +14,12 @@ some are still thin. Built out so far:
 |-------|--------|--------|
 | Acquire | `ds.io` | thin — `load_table`, `save_table` |
 | Validate | `ds.validation` | thin — `require_columns`, `assert_no_nulls` |
-| Clean | `ds.preprocessing` | thin — `standardize_column_names`, `drop_constant_columns` |
+| Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns`, `drop_duplicate_rows`, `coerce_dtypes`, `flag_outliers`, `clip_outliers`, `impute_missing` |
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
 | Feature | `ds.features` | thin — `add_datetime_features` |
 | Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `count_tokens` |
 | Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics` |
-| Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_confusion_matrix`, `plot_residuals` |
+| Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_confusion_matrix`, `plot_residuals` |
 
 Supporting: `ds` CLI (`ds version`, `ds new`), a per-stage docs Guide, a
 `test-extras` CI job, single-sourced version, and an extended project template.
@@ -32,8 +32,9 @@ hints (`mypy --strict`) → mirroring test → export from `__all__`. Prefer the
 core deps (pandas, numpy, scikit-learn, matplotlib); anything heavier goes in an
 extra and must degrade gracefully.
 
-- **`ds.preprocessing`** — coerce column dtypes; clip/flag outliers (IQR or
-  z-score); drop duplicate rows; impute missing values.
+- **`ds.preprocessing`** — ✅ done (`coerce_dtypes`, `flag_outliers` /
+  `clip_outliers`, `drop_duplicate_rows`, `impute_missing`, paired with
+  `ds.viz.plot_outliers`).
 - **`ds.features`** — one-hot / ordinal categorical encoding; numeric scaling
   wrappers; equal-width / quantile binning.
 - **`ds.validation`** — assert a column's values fall in a range or an allowed

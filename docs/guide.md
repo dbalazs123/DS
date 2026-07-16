@@ -46,10 +46,23 @@ assert_no_nulls(df, ["amount"])           # raises on nulls in `amount`
 ### Clean — `ds.preprocessing`
 
 ```python
-from ds.preprocessing import drop_constant_columns, standardize_column_names
+from ds.preprocessing import (
+    clip_outliers,
+    coerce_dtypes,
+    drop_constant_columns,
+    drop_duplicate_rows,
+    flag_outliers,
+    impute_missing,
+    standardize_column_names,
+)
 
-df = standardize_column_names(df)   # "Total Sales ($)" -> "total_sales"
-df = drop_constant_columns(df)      # drop columns with a single value
+df = standardize_column_names(df)          # "Total Sales ($)" -> "total_sales"
+df = drop_constant_columns(df)             # drop columns with a single value
+df = drop_duplicate_rows(df)               # de-duplicate rows (optional subset=)
+df = coerce_dtypes(df, {"amount": "float64"})  # pin loader-inferred dtypes
+df = impute_missing(df, strategy="median")     # fill gaps per column
+flags = flag_outliers(df, method="iqr")        # boolean mask of extreme values
+df = clip_outliers(df, method="iqr")           # winsorize instead of dropping
 ```
 
 ### Explore — `ds.eda`
@@ -114,19 +127,22 @@ per_class_metrics(y_true, y_pred)        # precision/recall/f1/support per class
 from ds.viz import (
     plot_confusion_matrix,
     plot_missingness,
+    plot_outliers,
     plot_residuals,
     set_theme,
 )
 
 set_theme("notebook")                    # consistent matplotlib theme + palette
 plot_missingness(df)                     # bar chart of missing fractions
+plot_outliers(df)                        # bar chart of outlier counts per column
 plot_confusion_matrix(y_true, y_pred)    # annotated heatmap
 plot_residuals(y_true, y_pred)           # residual-vs-predicted diagnostic
 ```
 
 Each plot returns a matplotlib `Axes` and accepts an existing `ax=`, so they
-compose into multi-panel figures. They pair with the `ds.eda` and
-`ds.evaluation` helpers (`plot_missingness` visualizes `missing_value_report`,
+compose into multi-panel figures. They pair with the `ds.eda`,
+`ds.preprocessing` and `ds.evaluation` helpers (`plot_missingness` visualizes
+`missing_value_report`, `plot_outliers` visualizes `flag_outliers`,
 `plot_confusion_matrix` visualizes `confusion_frame`).
 
 ### Cross-cutting
