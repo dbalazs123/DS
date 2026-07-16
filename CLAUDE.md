@@ -61,7 +61,9 @@ When adding a utility, place it in the module for its lifecycle stage, give it a
 Google-style docstring and full type hints (the codebase is `mypy --strict`), add
 a mirroring test, and export it from the module's `__all__`. Heavy dependencies
 go in the right extra and must degrade gracefully when absent (see
-`src/ds/modeling/nlp.py`).
+`src/ds/modeling/nlp.py`). [`CONTRIBUTING.md`](CONTRIBUTING.md) has the full
+contributor workflow (setup, the one-command `make check`, and this recipe in
+more detail).
 
 ## Roadmap
 
