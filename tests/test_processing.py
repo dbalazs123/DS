@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import json
+import math
+
+import numpy as np
 import pandas as pd
 import pytest
 
 from ds.eda import missing_value_report, summarize, top_correlations
 from ds.features import (
+    OneHotCategories,
+    OrdinalCategories,
+    ScaleParams,
     add_datetime_features,
     apply_one_hot_encode,
     apply_ordinal_encode,
@@ -20,6 +27,8 @@ from ds.features import (
     scale_features,
 )
 from ds.preprocessing import (
+    ImputeValues,
+    OutlierBounds,
     apply_clip_outliers,
     apply_flag_outliers,
     apply_impute_missing,
@@ -451,3 +460,116 @@ def test_bin_column_quantile() -> None:
 def test_bin_column_missing_column_raises() -> None:
     with pytest.raises(KeyError):
         bin_column(pd.DataFrame({"a": [1]}), "nope", bins=2)
+
+
+# --- Persistable fit parameters: to_dict / from_dict round-trips ---
+
+
+def _through_json(data: dict[str, object]) -> dict[str, object]:
+    """Round-trip a payload through strict JSON, as ds.io.save_params does."""
+    loaded = json.loads(json.dumps(data, allow_nan=False))
+    assert isinstance(loaded, dict)
+    return loaded
+
+
+def test_outlier_bounds_round_trips_including_non_finite() -> None:
+    # An all-null fit yields (-inf, inf) bounds, which strict JSON cannot hold
+    # as literals — the tagged encoding must carry them through anyway.
+    bounds = fit_outlier_bounds(
+        pd.DataFrame({"x": [1.0, 2.0, 3.0, 4.0], "empty": [np.nan] * 4}), method="zscore"
+    )
+    assert bounds.bounds["empty"] == (-np.inf, np.inf)
+    restored = OutlierBounds.from_dict(_through_json(bounds.to_dict()))
+    assert restored == bounds
+    df = pd.DataFrame({"x": [0.0, 2.5, 99.0], "empty": [1.0, 2.0, 3.0]})
+    assert apply_clip_outliers(df, restored).equals(apply_clip_outliers(df, bounds))
+
+
+def test_impute_values_round_trips_numpy_scalar_fills() -> None:
+    values = fit_impute_values(pd.DataFrame({"x": [1.0, 2.0, np.nan]}), strategy="median")
+    assert isinstance(values.fill_values["x"], np.floating)  # the raw fit is a numpy scalar
+    payload = _through_json(values.to_dict())
+    restored = ImputeValues.from_dict(payload)
+    assert isinstance(restored.fill_values["x"], float)  # reloaded as a plain float
+    assert restored.fill_values["x"] == values.fill_values["x"]
+    assert restored.strategy == values.strategy
+    df = pd.DataFrame({"x": [np.nan, 5.0]})
+    assert apply_impute_missing(df, restored).equals(apply_impute_missing(df, values))
+
+
+def test_impute_values_round_trips_nan_fill() -> None:
+    # A NaN fill (e.g. the mean of an all-null column) has no strict-JSON
+    # literal either; it survives via the same tagged encoding.
+    values = ImputeValues(fill_values={"x": float("nan")}, strategy="constant")
+    restored = ImputeValues.from_dict(_through_json(values.to_dict()))
+    fill = restored.fill_values["x"]
+    assert isinstance(fill, float) and math.isnan(fill)
+
+
+def test_scale_params_round_trips_both_methods() -> None:
+    df = pd.DataFrame({"x": [10.0, 20.0, 30.0], "k": [5.0, 5.0, 5.0]})
+    for method in ("standard", "minmax"):
+        params = fit_scale_params(df, method=method)  # type: ignore[arg-type]
+        restored = ScaleParams.from_dict(_through_json(params.to_dict()))
+        assert restored == params
+        assert apply_scale_features(df, restored).equals(apply_scale_features(df, params))
+
+
+def test_one_hot_categories_round_trips_non_string_categories() -> None:
+    # Vocabularies fitted from data hold numpy scalars and non-string values;
+    # the reload must normalize them to plain Python and restore the tuples.
+    categories = fit_one_hot_categories(
+        pd.DataFrame({"c": ["b", "a"], "n": pd.array([2, 1], dtype="int64")}),
+        columns=["c", "n"],
+        drop_first=True,
+        dummy_na=True,
+    )
+    restored = OneHotCategories.from_dict(_through_json(categories.to_dict()))
+    assert restored == categories
+    assert all(isinstance(cats, tuple) for cats in restored.categories.values())
+    assert restored.categories["n"] == (1, 2)
+    assert all(type(cat) is int for cat in restored.categories["n"])
+    df = pd.DataFrame({"c": ["a", "zzz"], "n": [1, 3]})
+    assert apply_one_hot_encode(df, restored).equals(apply_one_hot_encode(df, categories))
+
+
+def test_ordinal_categories_round_trips() -> None:
+    order = fit_ordinal_categories(
+        pd.DataFrame({"size": ["M", "S"]}), categories={"size": ["S", "M", "L"]}
+    )
+    restored = OrdinalCategories.from_dict(_through_json(order.to_dict()))
+    assert restored == order
+    df = pd.DataFrame({"size": ["L", "S", "XL", None]})
+    assert apply_ordinal_encode(df, restored).equals(apply_ordinal_encode(df, order))
+
+
+def test_from_dict_rejects_malformed_payloads() -> None:
+    good = OutlierBounds(bounds={"x": (0.0, 1.0)}, method="iqr", factor=1.5).to_dict()
+
+    with pytest.raises(ValueError, match="must be a mapping"):
+        OutlierBounds.from_dict(["not", "a", "mapping"])  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="expected a 'OutlierBounds' payload"):
+        OutlierBounds.from_dict({**good, "type": "ScaleParams"})
+    with pytest.raises(ValueError, match="missing fields"):
+        OutlierBounds.from_dict({k: v for k, v in good.items() if k != "factor"})
+    with pytest.raises(ValueError, match="unexpected fields"):
+        OutlierBounds.from_dict({**good, "stale_field": 1})
+    with pytest.raises(ValueError, match="method"):
+        OutlierBounds.from_dict({**good, "method": "mad"})
+    with pytest.raises(ValueError, match="pair"):
+        OutlierBounds.from_dict({**good, "bounds": {"x": [1.0]}})
+    with pytest.raises(ValueError, match="number"):
+        OutlierBounds.from_dict({**good, "factor": True})
+    with pytest.raises(ValueError, match="tagged non-finite float"):
+        OutlierBounds.from_dict({**good, "bounds": {"x": [{"__float__": "huge"}, 1.0]}})
+
+    with pytest.raises(ValueError, match="strategy"):
+        ImputeValues.from_dict({"type": "ImputeValues", "fill_values": {}, "strategy": "modal"})
+    scale = ScaleParams(center={"x": 0.0}, spread={"x": 1.0}, method="standard").to_dict()
+    with pytest.raises(ValueError, match="same columns"):
+        ScaleParams.from_dict({**scale, "spread": {"y": 1.0}})
+    one_hot = OneHotCategories(categories={"c": ("a",)}, drop_first=False, dummy_na=False)
+    with pytest.raises(ValueError, match="bool"):
+        OneHotCategories.from_dict({**one_hot.to_dict(), "drop_first": 1})
+    with pytest.raises(ValueError, match="list of categories"):
+        OrdinalCategories.from_dict({"type": "OrdinalCategories", "categories": {"c": "abc"}})

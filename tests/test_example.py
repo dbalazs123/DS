@@ -12,6 +12,7 @@ import importlib.util
 from pathlib import Path
 from types import ModuleType
 
+import pandas as pd
 import pytest
 
 EXAMPLE_PATH = Path(__file__).resolve().parent.parent / "projects" / "_example" / "pipeline.py"
@@ -58,15 +59,19 @@ def test_example_pipeline_cleans_and_encodes_split_safely(tmp_path: Path) -> Non
 
     from ds import Settings, seed_everything
     from ds.features import (
+        OneHotCategories,
+        ScaleParams,
         add_datetime_features,
         apply_one_hot_encode,
         apply_scale_features,
         fit_one_hot_categories,
         fit_scale_params,
     )
-    from ds.io import load_raw, save_table
+    from ds.io import load_params, load_raw, save_params, save_table
     from ds.modeling.timeseries import train_test_split_by_time
     from ds.preprocessing import (
+        ImputeValues,
+        OutlierBounds,
         apply_clip_outliers,
         apply_impute_missing,
         coerce_dtypes,
@@ -138,3 +143,39 @@ def test_example_pipeline_cleans_and_encodes_split_safely(tmp_path: Path) -> Non
     # The test window sits in train's future, so train-fitted scaling maps it
     # beyond train's standardized range rather than re-centering it at zero.
     assert test["date_month"].mean() > train["date_month"].mean()
+
+    # Persist the whole fitted state and rebuild it purely from the files, as
+    # the pipeline's "later run" does — every reload matches the original fit.
+    params_dir = tmp_path / "params"
+    save_params(bounds, params_dir / "outlier_bounds.json")
+    save_params(sales_fill, params_dir / "sales_fill.json")
+    save_params(region_fill, params_dir / "region_fill.json")
+    save_params(vocabulary, params_dir / "region_vocabulary.json")
+    save_params(scaling, params_dir / "date_scaling.json")
+    assert load_params(params_dir / "outlier_bounds.json", OutlierBounds) == bounds
+    assert load_params(params_dir / "sales_fill.json", ImputeValues) == sales_fill
+    region_fill_reloaded = load_params(params_dir / "region_fill.json", ImputeValues)
+    vocabulary_reloaded = load_params(params_dir / "region_vocabulary.json", OneHotCategories)
+    scaling_reloaded = load_params(params_dir / "date_scaling.json", ScaleParams)
+    assert region_fill_reloaded == region_fill
+    assert vocabulary_reloaded == vocabulary
+    assert scaling_reloaded == scaling
+
+    # Fresh rows that never existed at fit time flow through the reloaded
+    # transforms to exactly the training feature columns: the missing region
+    # takes train's modal fill and the unseen "central" encodes as all zeros.
+    fresh = pd.DataFrame(
+        {
+            "date": pd.date_range("2025-06-01", periods=3, freq="D"),
+            "region": ["north", None, "central"],
+        }
+    )
+    fresh = apply_impute_missing(fresh, region_fill_reloaded)
+    fresh = add_datetime_features(fresh, "date", drop=False)
+    fresh = apply_one_hot_encode(fresh, vocabulary_reloaded)
+    fresh = apply_scale_features(fresh, scaling_reloaded)
+    feature_columns = [c for c in train.columns if c not in ("date", "total_sales")]
+    assert set(feature_columns) <= set(fresh.columns)
+    region_columns = [c for c in fresh.columns if c.startswith("region_")]
+    assert fresh.loc[1, region_columns].sum() == 1  # filled with the train mode
+    assert fresh.loc[2, region_columns].sum() == 0  # unseen category -> all zeros

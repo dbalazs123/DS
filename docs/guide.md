@@ -184,6 +184,34 @@ fit-and-apply-on-the-same-frame conveniences for exploratory, pre-split work.
 The worked example (`projects/_example/pipeline.py`) runs this exact pattern
 end to end.
 
+#### Persist the fitted parameters
+
+Every parameter dataclass has a validated `to_dict`/`from_dict` round-trip,
+and `ds.io.save_params`/`load_params` write and read them as JSON — so a
+pipeline can save its fitted state alongside its model and score new incoming
+rows in a later run or another process, without refitting:
+
+```python
+from ds.io import load_params, save_params
+from ds.features import OneHotCategories
+
+save_params(fills, "artifacts/fills.json")           # training run
+save_params(vocab, "artifacts/vocab.json")
+
+vocab = load_params("artifacts/vocab.json", OneHotCategories)  # scoring run
+new_rows = apply_one_hot_encode(new_rows, vocab)     # same columns as training
+```
+
+The files are strict JSON: numpy scalars (e.g. a `np.float64` median fill) are
+stored as plain numbers, non-finite floats (an all-null column fits `±inf`
+bounds) as a tagged `{"__float__": "inf"}` mapping, and category vocabularies
+keep non-string values (ints, bools) intact. `load_params` validates the
+payload against the class you ask for, so a stale, hand-edited or
+wrong-type file fails with a clear error instead of building broken
+parameters. The worked example saves all five fitted objects next to its
+processed data and rebuilds them from disk to score rows that did not exist
+at fit time.
+
 ### Model — `ds.modeling`
 
 Split tabular data into features and target, or split a time series
