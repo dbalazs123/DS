@@ -66,7 +66,14 @@ def test_pipeline_end_to_end(tmp_path: Path) -> None:
 
     # Artifacts: EDA reports, figures, processed data, persisted pipeline
     # and model.
-    for name in ("summary.csv", "missing.csv", "missingness.png", "residuals.png"):
+    for name in (
+        "summary.csv",
+        "missing.csv",
+        "missingness.png",
+        "residuals.png",
+        "model_comparison.csv",
+        "model_comparison.png",
+    ):
         assert (out / name).exists()
     assert (settings.processed_dir / "taxis_features.parquet").exists()
     assert (settings.processed_dir / "params" / "taxis_model.joblib").exists()

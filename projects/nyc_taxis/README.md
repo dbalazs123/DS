@@ -18,11 +18,13 @@ model (`ds.modeling.persistence`) → score the held-out window from the
 plot.
 
 This project exists to run the workspace's demand loop: friction it surfaced
-in the library is recorded in [`ROADMAP.md`](../../ROADMAP.md). Its first
-item — no model persistence — has since been closed by
-`ds.modeling.persistence.save_model`/`load_model`, which this pipeline now
-uses; still open: no `hour` from `add_datetime_features`, no high-cardinality
-encoder, no baseline estimators.
+in the library is recorded in [`ROADMAP.md`](../../ROADMAP.md), and three of
+its four items have since been promoted into the library and are consumed
+here — model persistence (`ds.modeling.persistence`), `pickup_hour` from
+`add_datetime_features`, and the train-mean baseline
+(`ds.modeling.baseline.fit_baseline`, compared via
+`ds.evaluation.compare_models` + `ds.viz.plot_model_comparison`). Still open:
+a high-cardinality encoder for the ~200-level zone columns.
 
 ## Run
 

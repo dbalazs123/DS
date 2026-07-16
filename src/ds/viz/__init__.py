@@ -198,10 +198,48 @@ def plot_residuals(
     return ax
 
 
+def plot_model_comparison(
+    comparison: pd.DataFrame, *, metric: str | None = None, ax: Axes | None = None
+) -> Axes:
+    """Plot one metric from a model-comparison frame, best-labeled first.
+
+    A horizontal bar chart of a :func:`ds.evaluation.compare_models` frame
+    (one row per model), mirroring how :func:`plot_missingness` visualizes
+    the missing-value report. Models are shown in the frame's row order, so
+    sort the frame first if a ranking is wanted.
+
+    Args:
+        comparison: Frame with models as the index and metrics as columns.
+        metric: Column to plot; defaults to the frame's first column.
+        ax: Existing Axes to draw on; a new figure is created when omitted.
+
+    Returns:
+        The Axes the chart was drawn on.
+
+    Raises:
+        KeyError: If ``metric`` is not a column of ``comparison``.
+        ValueError: If ``comparison`` has no columns to plot.
+    """
+    if comparison.columns.empty:
+        raise ValueError("comparison frame has no metric columns to plot")
+    if metric is None:
+        metric = str(comparison.columns[0])
+    elif metric not in comparison.columns:
+        raise KeyError(metric)
+    ax = _resolve_ax(ax)
+    names = [str(name) for name in comparison.index]
+    ax.barh(names, comparison[metric].to_numpy(), color=PALETTE[0])
+    ax.set_xlabel(metric)
+    ax.invert_yaxis()  # keep the frame's first model at the top
+    ax.set_title(f"Model comparison — {metric}")
+    return ax
+
+
 __all__ = [
     "PALETTE",
     "plot_confusion_matrix",
     "plot_missingness",
+    "plot_model_comparison",
     "plot_outliers",
     "plot_residuals",
     "set_theme",

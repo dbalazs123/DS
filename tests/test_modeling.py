@@ -11,10 +11,14 @@ from sklearn.linear_model import LinearRegression
 
 from ds.evaluation import (
     classification_metrics,
+    compare_models,
     confusion_frame,
+    cross_validate_by_time,
+    cross_validate_kfold,
     per_class_metrics,
     regression_metrics,
 )
+from ds.modeling.baseline import fit_baseline
 from ds.modeling.nlp import count_tokens
 from ds.modeling.persistence import load_model, save_model
 from ds.modeling.tabular import split_features_target
@@ -75,6 +79,39 @@ def test_per_class_metrics_breaks_out_each_label() -> None:
     assert frame.loc[1, "f1"] == 1.0
 
 
+def test_fit_baseline_mean_ignores_nulls() -> None:
+    y = pd.Series([1.0, 3.0, None])
+    baseline = fit_baseline(y, strategy="mean")
+    assert baseline.predict(3) == [2.0, 2.0, 2.0]
+
+
+def test_fit_baseline_naive_last_repeats_final_value() -> None:
+    y = pd.Series([10.0, 20.0, 30.0])
+    assert fit_baseline(y, strategy="naive_last").predict(2) == [30.0, 30.0]
+
+
+def test_fit_baseline_seasonal_naive_cycles_last_season() -> None:
+    y = pd.Series([1.0, 2.0, 3.0, 40.0, 50.0, 60.0])
+    baseline = fit_baseline(y, strategy="seasonal_naive", season_length=3)
+    assert baseline.values == (40.0, 50.0, 60.0)
+    assert baseline.predict(5) == [40.0, 50.0, 60.0, 40.0, 50.0]
+
+
+def test_fit_baseline_rejects_bad_inputs() -> None:
+    with pytest.raises(ValueError, match="empty"):
+        fit_baseline(pd.Series([], dtype=float))
+    with pytest.raises(ValueError, match="season_length"):
+        fit_baseline(pd.Series([1.0, 2.0]), strategy="seasonal_naive")
+    with pytest.raises(ValueError, match="season_length"):
+        fit_baseline(pd.Series([1.0, 2.0]), strategy="seasonal_naive", season_length=3)
+    with pytest.raises(ValueError, match="season_length"):
+        fit_baseline(pd.Series([1.0, 2.0]), strategy="mean", season_length=2)
+    with pytest.raises(ValueError, match="nulls"):
+        fit_baseline(pd.Series([1.0, None]), strategy="naive_last")
+    with pytest.raises(ValueError, match="non-negative"):
+        fit_baseline(pd.Series([1.0])).predict(-1)
+
+
 def test_model_round_trips_through_disk(tmp_path: Path) -> None:
     x = pd.DataFrame({"a": [1.0, 2.0, 3.0, 4.0], "b": [0.0, 1.0, 0.0, 1.0]})
     y = pd.Series([2.0, 4.5, 6.0, 8.5])
@@ -96,6 +133,90 @@ def test_save_model_accepts_str_path(tmp_path: Path) -> None:
 def test_load_model_missing_file_names_path(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match="nope.joblib"):
         load_model(tmp_path / "nope.joblib")
+
+
+def _linear_frame(n: int = 12) -> pd.DataFrame:
+    # y is an exact linear function of x, so LinearRegression recovers it and
+    # every fold's error is ~0 — which makes the fold plumbing observable.
+    t = list(range(1, n + 1))
+    return pd.DataFrame({"t": t, "x": [2.0 * v for v in t], "y": [3.0 * 2.0 * v for v in t]})
+
+
+def test_cross_validate_by_time_expands_history_per_fold() -> None:
+    result = cross_validate_by_time(
+        _linear_frame(),
+        time_column="t",
+        target="y",
+        make_model=lambda: LinearRegression(),
+        n_splits=3,
+    )
+    assert result.index.name == "fold"
+    assert list(result.index) == [1, 2, 3]
+    # Rolling origin: each fold trains on one more block of history.
+    assert result["train_size"].tolist() == [3.0, 6.0, 9.0]
+    assert result["test_size"].tolist() == [3.0, 3.0, 3.0]
+    assert (result["mae"] < 1e-8).all()
+
+
+def test_cross_validate_by_time_rejects_bad_inputs() -> None:
+    df = _linear_frame(4)
+    with pytest.raises(KeyError):
+        cross_validate_by_time(
+            df, time_column="nope", target="y", make_model=lambda: LinearRegression()
+        )
+    with pytest.raises(ValueError, match="n_splits"):
+        cross_validate_by_time(
+            df, time_column="t", target="y", make_model=lambda: LinearRegression(), n_splits=0
+        )
+    with pytest.raises(ValueError, match="rows"):
+        cross_validate_by_time(
+            df, time_column="t", target="y", make_model=lambda: LinearRegression(), n_splits=4
+        )
+
+
+def test_cross_validate_kfold_scores_every_fold() -> None:
+    df = _linear_frame().drop(columns=["t"])
+    result = cross_validate_kfold(df, target="y", make_model=lambda: LinearRegression(), n_splits=4)
+    assert result.index.name == "fold"
+    assert len(result) == 4
+    assert set(result.columns) == {"train_size", "test_size", "mae", "rmse", "r2"}
+    assert (result["mae"] < 1e-8).all()
+
+
+def test_cross_validate_kfold_rejects_bad_inputs() -> None:
+    df = _linear_frame(4).drop(columns=["t"])
+    with pytest.raises(KeyError):
+        cross_validate_kfold(df, target="nope", make_model=lambda: LinearRegression())
+    with pytest.raises(ValueError, match="n_splits"):
+        cross_validate_kfold(df, target="y", make_model=lambda: LinearRegression(), n_splits=9)
+
+
+def test_compare_models_scores_side_by_side() -> None:
+    y_true = [1.0, 2.0, 3.0]
+    frame = compare_models(y_true, {"model": [1.0, 2.0, 3.0], "baseline": [2.0, 2.0, 2.0]})
+    assert frame.index.name == "model"
+    assert list(frame.index) == ["model", "baseline"]  # mapping order preserved
+    assert frame.loc["model", "mae"] == 0.0
+    assert frame.loc["baseline", "mae"] == pytest.approx(2.0 / 3.0)
+
+
+def test_compare_models_rejects_bad_inputs() -> None:
+    with pytest.raises(ValueError, match="at least one"):
+        compare_models([1.0], {})
+    with pytest.raises(ValueError, match="align"):
+        compare_models([1.0, 2.0], {"short": [1.0]})
+
+
+def test_plot_model_comparison_defaults_to_first_metric() -> None:
+    from ds.viz import plot_model_comparison
+
+    frame = compare_models([1.0, 2.0], {"a": [1.0, 2.0], "b": [2.0, 3.0]})
+    ax = plot_model_comparison(frame)
+    assert ax.get_xlabel() == "mae"
+    with pytest.raises(KeyError):
+        plot_model_comparison(frame, metric="nope")
+    with pytest.raises(ValueError, match="no metric columns"):
+        plot_model_comparison(pd.DataFrame(index=pd.Index(["a"], name="model")))
 
 
 def test_count_tokens_fallback() -> None:

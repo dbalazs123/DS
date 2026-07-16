@@ -122,8 +122,10 @@ def test_example_pipeline_cleans_and_encodes_split_safely(tmp_path: Path) -> Non
     assert train.isna().sum().sum() == 0
     assert test.isna().sum().sum() == 0
 
-    train = add_datetime_features(train, "date", drop=False)
-    test = add_datetime_features(test, "date", drop=False)
+    # Daily data: the expanded hour is constantly zero, so drop it as the
+    # example pipeline does.
+    train = add_datetime_features(train, "date", drop=False).drop(columns=["date_hour"])
+    test = add_datetime_features(test, "date", drop=False).drop(columns=["date_hour"])
 
     vocabulary = fit_one_hot_categories(train, columns=["region"])
     train = apply_one_hot_encode(train, vocabulary)

@@ -156,9 +156,10 @@ def run(output_dir: Path) -> dict[str, float]:
         assert_no_nulls(test)
 
         # Calendar features are stateless, so each split expands its own dates
-        # (keep `date` for ordering, drop it before modeling).
-        train = add_datetime_features(train, "date", drop=False)
-        test = add_datetime_features(test, "date", drop=False)
+        # (keep `date` for ordering, drop it before modeling). Daily data has
+        # no intraday signal, so the expanded hour is constantly zero — drop it.
+        train = add_datetime_features(train, "date", drop=False).drop(columns=["date_hour"])
+        test = add_datetime_features(test, "date", drop=False).drop(columns=["date_hour"])
 
         vocabulary = fit_one_hot_categories(train, columns=["region"])
         train = apply_one_hot_encode(train, vocabulary)

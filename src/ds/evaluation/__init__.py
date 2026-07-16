@@ -1,11 +1,13 @@
-"""Model evaluation: metrics and reporting."""
+"""Model evaluation: metrics, cross-validation and model comparison."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any
 
 import pandas as pd
 from sklearn import metrics
+from sklearn.model_selection import KFold
 
 
 def regression_metrics(y_true: Sequence[float], y_pred: Sequence[float]) -> dict[str, float]:
@@ -98,9 +100,197 @@ def per_class_metrics(y_true: Sequence[int], y_pred: Sequence[int]) -> pd.DataFr
     )
 
 
+# Any fold-scoring function with the shape of `regression_metrics` /
+# `classification_metrics`: two aligned sequences in, named scores out.
+MetricsFunction = Callable[[Sequence[Any], Sequence[Any]], Mapping[str, float]]
+
+
+def _fold_boundaries(n_rows: int, n_blocks: int) -> list[int]:
+    """Split ``range(n_rows)`` into ``n_blocks`` contiguous, non-empty blocks.
+
+    Returns the ``n_blocks + 1`` boundary offsets (first ``0``, last
+    ``n_rows``), sized as evenly as integer division allows.
+    """
+    base, remainder = divmod(n_rows, n_blocks)
+    boundaries = [0]
+    for block in range(n_blocks):
+        boundaries.append(boundaries[-1] + base + (1 if block < remainder else 0))
+    return boundaries
+
+
+def cross_validate_by_time(
+    df: pd.DataFrame,
+    *,
+    time_column: str,
+    target: str,
+    make_model: Callable[[], Any],
+    n_splits: int = 5,
+    metrics_fn: MetricsFunction = regression_metrics,
+) -> pd.DataFrame:
+    """Rolling-origin cross-validation for time-ordered data.
+
+    The frame is sorted by ``time_column`` and cut into ``n_splits + 1``
+    contiguous blocks; fold ``i`` trains on the first ``i`` blocks and tests
+    on block ``i + 1``, so every test window is strictly in its training
+    data's future — the repeated-fold counterpart to
+    :func:`ds.modeling.timeseries.train_test_split_by_time`, and the only
+    valid protocol for forecasting evaluation (a shuffled k-fold would train
+    on the future). ``time_column`` and ``target`` are excluded from the
+    feature matrix.
+
+    Args:
+        df: The modeling frame (features + target + time column).
+        time_column: Column to order by.
+        target: Name of the target column.
+        make_model: Zero-argument factory returning a **fresh** unfitted
+            model with scikit-learn's ``fit``/``predict`` protocol (e.g.
+            ``lambda: LinearRegression()``); a new instance is built per fold
+            so no state leaks between folds.
+        n_splits: Number of folds (each fold adds one more block of history).
+        metrics_fn: Fold-scoring function; defaults to
+            :func:`regression_metrics` (use :func:`classification_metrics`
+            for classifiers).
+
+    Returns:
+        A DataFrame with one row per fold (index name ``"fold"``, starting at
+        1) carrying ``train_size``, ``test_size`` and one column per metric.
+
+    Raises:
+        KeyError: If ``time_column`` or ``target`` is missing.
+        ValueError: If ``n_splits < 1`` or ``df`` has fewer than
+            ``n_splits + 1`` rows.
+    """
+    missing = [col for col in (time_column, target) if col not in df.columns]
+    if missing:
+        raise KeyError(missing)
+    if n_splits < 1:
+        raise ValueError(f"n_splits must be at least 1, got {n_splits}")
+    if len(df) < n_splits + 1:
+        raise ValueError(
+            f"need at least n_splits + 1 = {n_splits + 1} rows for non-empty folds, got {len(df)}"
+        )
+
+    ordered = df.sort_values(time_column)
+    boundaries = _fold_boundaries(len(ordered), n_splits + 1)
+    rows: list[dict[str, float]] = []
+    for fold in range(1, n_splits + 1):
+        train = ordered.iloc[: boundaries[fold]]
+        test = ordered.iloc[boundaries[fold] : boundaries[fold + 1]]
+        model = make_model()
+        model.fit(train.drop(columns=[time_column, target]), train[target])
+        predictions = model.predict(test.drop(columns=[time_column, target]))
+        scores = metrics_fn(test[target].tolist(), list(predictions))
+        rows.append({"train_size": float(len(train)), "test_size": float(len(test)), **scores})
+    return pd.DataFrame(rows, index=pd.RangeIndex(1, n_splits + 1, name="fold"))
+
+
+def cross_validate_kfold(
+    df: pd.DataFrame,
+    *,
+    target: str,
+    make_model: Callable[[], Any],
+    n_splits: int = 5,
+    shuffle: bool = True,
+    metrics_fn: MetricsFunction = regression_metrics,
+) -> pd.DataFrame:
+    """Plain k-fold cross-validation for order-free tabular data.
+
+    Wraps :class:`sklearn.model_selection.KFold` and scores every fold with
+    the stage's own metric helpers, returning the same per-fold frame as
+    :func:`cross_validate_by_time`. Use that function instead whenever the
+    rows are time-ordered — a shuffled k-fold on temporal data trains on the
+    future. Shuffling draws from numpy's global generator, so
+    :func:`ds.seed_everything` makes the folds reproducible.
+
+    Args:
+        df: The modeling frame (features + target).
+        target: Name of the target column.
+        make_model: Zero-argument factory returning a **fresh** unfitted
+            model with scikit-learn's ``fit``/``predict`` protocol; a new
+            instance is built per fold.
+        n_splits: Number of folds.
+        shuffle: Whether to shuffle rows before splitting.
+        metrics_fn: Fold-scoring function; defaults to
+            :func:`regression_metrics` (use :func:`classification_metrics`
+            for classifiers).
+
+    Returns:
+        A DataFrame with one row per fold (index name ``"fold"``, starting at
+        1) carrying ``train_size``, ``test_size`` and one column per metric.
+
+    Raises:
+        KeyError: If ``target`` is missing.
+        ValueError: If ``n_splits`` is not between 2 and ``len(df)``.
+    """
+    if target not in df.columns:
+        raise KeyError(target)
+    if not 2 <= n_splits <= len(df):
+        raise ValueError(f"n_splits must be between 2 and len(df)={len(df)}, got {n_splits}")
+
+    features = df.drop(columns=[target])
+    rows: list[dict[str, float]] = []
+    folds = KFold(n_splits=n_splits, shuffle=shuffle)
+    for train_idx, test_idx in folds.split(features):
+        model = make_model()
+        model.fit(features.iloc[train_idx], df[target].iloc[train_idx])
+        predictions = model.predict(features.iloc[test_idx])
+        scores = metrics_fn(df[target].iloc[test_idx].tolist(), list(predictions))
+        rows.append(
+            {"train_size": float(len(train_idx)), "test_size": float(len(test_idx)), **scores}
+        )
+    return pd.DataFrame(rows, index=pd.RangeIndex(1, n_splits + 1, name="fold"))
+
+
+def compare_models(
+    y_true: Sequence[Any],
+    predictions: Mapping[str, Sequence[Any]],
+    *,
+    metrics_fn: MetricsFunction = regression_metrics,
+) -> pd.DataFrame:
+    """Score several models' predictions on one target, side by side.
+
+    The named-row companion to the single-model metric helpers: score each
+    candidate (including a :func:`ds.modeling.baseline.fit_baseline`
+    reference — a model only means something relative to the naive floor)
+    and get one frame to read or hand to
+    :func:`ds.viz.plot_model_comparison`.
+
+    Args:
+        y_true: Ground-truth target values.
+        predictions: Mapping of model name to that model's predictions,
+            each aligned with ``y_true``. Row order follows the mapping.
+        metrics_fn: Scoring function; defaults to :func:`regression_metrics`.
+
+    Returns:
+        A DataFrame with one row per model (index name ``"model"``) and one
+        column per metric.
+
+    Raises:
+        ValueError: If ``predictions`` is empty or a prediction sequence's
+            length differs from ``y_true``'s.
+    """
+    if not predictions:
+        raise ValueError("predictions must name at least one model")
+    mismatched = {
+        name: len(y_pred) for name, y_pred in predictions.items() if len(y_pred) != len(y_true)
+    }
+    if mismatched:
+        raise ValueError(
+            f"predictions must align with y_true (length {len(y_true)}); mismatched: {mismatched}"
+        )
+    rows = {name: dict(metrics_fn(y_true, y_pred)) for name, y_pred in predictions.items()}
+    frame = pd.DataFrame.from_dict(rows, orient="index")
+    frame.index.name = "model"
+    return frame
+
+
 __all__ = [
+    "MetricsFunction",
     "classification_metrics",
+    "compare_models",
     "confusion_frame",
+    "cross_validate_by_time",
+    "cross_validate_kfold",
     "per_class_metrics",
     "regression_metrics",
 ]

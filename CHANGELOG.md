@@ -7,6 +7,30 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Model/Evaluate build-out (P3 of `ROADMAP.md`'s plan of record, re-ranked
+  against the `nyc_taxis` friction backlog first):
+  - `ds.features.add_datetime_features` now also emits ``<column>_hour``
+    (friction item 2 — hour of day was the taxi data's strongest temporal
+    signal and had to be hand-rolled; on date-only data the column is
+    constantly zero, where `drop_constant_columns` removes it).
+  - `ds.modeling.baseline`: `fit_baseline` (``mean`` / ``naive_last`` /
+    ``seasonal_naive``) returns a frozen `Baseline` whose `predict(n)` feeds
+    `ds.evaluation` directly — the reference point every first metric needs
+    (friction item 3), deliberately not a scikit-learn estimator since a
+    baseline needs no feature matrix.
+  - `ds.evaluation.cross_validate_by_time` (rolling-origin folds — every
+    test window strictly in its training data's future, the repeated-fold
+    counterpart to `train_test_split_by_time`) and `cross_validate_kfold`
+    (order-free data), both building a fresh model per fold via a
+    `make_model` factory and scoring with a `metrics_fn` that defaults to
+    `regression_metrics` (pass `classification_metrics` or a custom scorer
+    to compose instead of forking the API).
+  - `ds.evaluation.compare_models` (one row of metrics per named model) and
+    its paired `ds.viz.plot_model_comparison`, per the stage↔viz
+    convention.
+  - `projects/nyc_taxis` dogfoods it all: library `pickup_hour`,
+    `fit_baseline` and a persisted comparison frame/plot replace its
+    hand-rolled versions with identical metrics.
 - `ds.modeling.persistence`: `save_model`/`load_model` persist a fitted
   estimator with `joblib` (now a declared core dependency — it was already
   present transitively via scikit-learn), completing the fit-once/score-later
