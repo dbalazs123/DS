@@ -263,8 +263,8 @@ parameters.
 Pair them with `ds.modeling.persistence.save_model`/`load_model` (see
 [Model](#model-dsmodeling)) and the scoring run reloads *everything* — fitted
 transforms **and** estimator — from disk, with no refitting and no in-memory
-carryover. Both worked projects (`projects/_example`, `projects/nyc_taxis`)
-run exactly that loop.
+carryover. All three worked projects (`projects/_example`,
+`projects/nyc_taxis`, `projects/titanic`) run exactly that loop.
 
 #### Compose the applies into one pipeline
 

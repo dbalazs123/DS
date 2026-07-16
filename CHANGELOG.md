@@ -7,6 +7,25 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Second real-data project, and the first classification one:
+  `projects/titanic` predicts passenger survival on the classic 891-row
+  manifest (seaborn-data mirror), chosen for what it stresses — missing
+  values at three severities (`age` ~20%, `deck` ~77% → a `deck_known`
+  indicator, `embarked` two rows), the target respelled as a feature
+  (`alive`, verified one-to-one before dropping), derived duplicate columns,
+  a skewed `fare`, and 107 duplicate rows that are distinct passengers (kept,
+  deliberately). Full lifecycle on `ds` + scikit-learn: stratified split, a
+  five-step persisted scoring `Pipeline` (including two `impute_missing`
+  steps with different strategies), the model persisted and the held-out
+  split scored from the reloaded copy, and the previously untouched
+  classification surface exercised end to end — `classification_metrics`,
+  `confusion_frame`, `per_class_metrics`, `plot_confusion_matrix`, and the
+  first real composition of `cross_validate_kfold` with
+  `metrics_fn=classification_metrics`. Held-out accuracy 0.799 / F1 0.731
+  vs the sex-only rule (0.777 / 0.692) and the majority class (0.615 / 0.0).
+  Per the demand-first rule the project promotes nothing; the friction it
+  surfaced is recorded as items 6–9 of `ROADMAP.md`'s backlog (P5 of the
+  plan of record).
 - High-cardinality categorical strategy in `ds.features` (friction item 4 of
   `ROADMAP.md`'s backlog — the last open item from the real-data `nyc_taxis`
   project): `fit_topk_categories`/`apply_collapse_categories` (plus the

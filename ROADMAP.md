@@ -25,8 +25,8 @@ Supporting: `ds.pipeline` (a persistable fit-once/apply-many `Pipeline` over
 the `fit_*`/`apply_*` pairs), `ds` CLI (`ds version`, `ds new`, `ds run`), a
 per-stage docs Guide with cross-stage recipes, a `test-extras` CI job,
 single-sourced version, and an extended project template. `projects/` holds the
-synthetic worked example (`_example`) and the first **real-data** project
-(`nyc_taxis`).
+synthetic worked example (`_example`) and two **real-data** projects:
+`nyc_taxis` (regression) and `titanic` (classification).
 
 ## Goal evaluation (2026-07)
 
@@ -40,7 +40,8 @@ extending recent momentum. Verdicts, and what they imply:
   library work") had never run, while eight consecutive PRs invested in
   supply-side library polish. **Consequence:** every library addition should
   now be pulled by a project need, not pushed from a candidate list. The
-  friction backlog below is the current queue.
+  friction backlogs below are the queue (currently the `titanic` one — the
+  `nyc_taxis` list is fully served).
 - **Fit-once / score-later** — *stopped one step short of its own goal;
   since closed (P2).* Fitted parameters and the `Pipeline` persist as strict
   JSON, but at evaluation time the fitted **model** could not be persisted at
@@ -115,14 +116,24 @@ orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
   as its first consumer. Intended future extras (e.g. a statsmodels-backed
   `timeseries`) live here until that code exists.
 
-**Next up:** the plan of record is complete (P1–P4 all done) and the
-`nyc_taxis` friction backlog is fully served (items 1–4 all promoted and
-consumed), so the next work is a **second real-data project** to regenerate
-demand before more library work — ideally classification on a
-GitHub-reachable public dataset, to exercise the untouched
-`classification_metrics`/`confusion_frame`/`per_class_metrics`/
-`plot_confusion_matrix` surface. Deprioritized until a project pulls them:
-more EDA helpers, more viz, more cookbook recipes, more CLI.
+- **P5 — regenerate demand with a second real-data project: DONE.**
+  `projects/titanic` classifies passenger survival on the classic 891-row
+  manifest (seaborn-data mirror; real missingness at three severities, the
+  target respelled as a feature, derived duplicate columns). Full lifecycle
+  on `ds` + scikit-learn — validated leakage drops, stratified split, a
+  five-step persisted scoring `Pipeline`, held-out split scored from the
+  reloaded model — and the first real exercise of the untouched
+  classification surface: `classification_metrics`, `confusion_frame`,
+  `per_class_metrics`, `plot_confusion_matrix`, and the first composition of
+  `cross_validate_kfold` with `metrics_fn=classification_metrics`. Held-out
+  accuracy 0.799 / F1 0.731 vs the sex-only rule (0.777 / 0.692) and the
+  majority class (0.615 / 0.0). Per the demand-first rule the project
+  promotes nothing itself; its friction list is the new backlog below.
+
+**Next up:** work the `titanic` friction backlog below, demand-first — top
+observed-pain item first, one promotion per change, each consumed by the
+project that demanded it. Deprioritized until a project pulls them: more EDA
+helpers, more viz, more cookbook recipes, more CLI.
 
 ## Friction backlog (from `projects/nyc_taxis`)
 
@@ -153,7 +164,45 @@ Demand-driven candidates, in observed-pain order:
    each parameter set on a progressively transformed train frame
    (fit → apply → fit next). Pure composition stays settled for now, but if a
    second project repeats this dance, a declarative fit-a-plan convenience
-   earns a fresh look.
+   earns a fresh look. **Trigger fired:** `titanic` repeated the dance
+   verbatim (five fit/apply pairs) — see item 9 below.
+
+## Friction backlog (from `projects/titanic`)
+
+The second run of the demand loop. Numbering continues from the `nyc_taxis`
+list so item references stay unambiguous; in observed-pain order:
+
+6. **No classification-shaped baseline.** `fit_baseline`'s strategies are all
+   regression-shaped — `"mean"` on the 0/1 survival target predicts 0.384,
+   a rate rather than a class label — so the majority-class reference every
+   classifier must beat was hand-rolled inline (`y_train.mode()`), exactly
+   the inline-baseline pain item 3 was meant to end. Candidate: a
+   `"majority"` strategy (predict the modal training label), the
+   classification twin of `"mean"`.
+7. **No split helper for order-free data.** `ds.modeling` ships only
+   `train_test_split_by_time`; the manifest has no time axis, and a 62/38
+   target wants stratification. The project calls scikit-learn's
+   `train_test_split(stratify=...)` directly — workable, but the split is
+   now the one lifecycle stage where the toolkit offers nothing for
+   non-temporal data.
+8. **`cross_validate_kfold` cannot stratify.** It wraps plain `KFold`, so on
+   the 62/38 target the fold class balance drifts (observed per-fold recall
+   0.64–0.79 across otherwise stable folds). A stratified option
+   (`StratifiedKFold` under a flag) would compose naturally with
+   `metrics_fn=classification_metrics`.
+9. **Cross-validation cannot re-fit the transform chain per fold.**
+   `make_model` rebuilds the estimator per fold, but the frame handed to
+   `cross_validate_kfold` already carries transforms fitted on the *whole*
+   training split — every fold's test rows influenced the imputation and
+   scaling statistics its train rows were transformed with. Doing it
+   properly means re-fitting the fit → apply → fit chain inside each fold,
+   which nothing in `ds.pipeline` can express: the same fit-side gap as
+   item 5, whose "second project repeats this dance" trigger has now fired.
+
+Where the library did *not* fight: the classification metric/plot surface
+itself (`classification_metrics`, `confusion_frame`, `per_class_metrics`,
+`plot_confusion_matrix`, `compare_models` with a swapped `metrics_fn`)
+composed first-try with no workarounds.
 
 ## Settled decisions (recorded rationale)
 
