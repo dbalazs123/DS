@@ -44,6 +44,13 @@ tests/         Test suite mirroring src/ds/
 
 Cross-cutting: `ds.config`, `ds.logging`, `ds.reproducibility`.
 
+**Import each helper from its stage** (`from ds.features import one_hot_encode`,
+`from ds.pipeline import Pipeline`); the stage name is part of the API. Only the
+stage-independent infrastructure is re-exported at the top level
+(`from ds import Settings, get_settings, get_logger, seed_everything`). This
+keeps `import ds` cheap and avoids cross-stage name collisions — see
+[Importing from DS](docs/guide.md#importing-from-ds).
+
 ## Starting a project
 
 ```bash

@@ -17,6 +17,47 @@ through every stage — generate → save/load → validate → clean → featur
 time-split → model → evaluate → visualize — and is the best single reference
 for how the pieces fit.
 
+## Importing from DS
+
+DS is organized by data-science *process*, and the imports follow suit:
+**import each helper from its stage.** The stage name is part of the public
+API — it tells you which lifecycle stage a function belongs to.
+
+```python
+from ds.io import load_table                 # acquire
+from ds.validation import require_columns    # validate
+from ds.preprocessing import impute_missing  # clean
+from ds.eda import summarize                 # explore
+from ds.features import one_hot_encode       # feature
+from ds.evaluation import regression_metrics # evaluate
+from ds.viz import plot_residuals            # visualize
+from ds.pipeline import Pipeline             # compose fitted transforms
+```
+
+The top-level `ds` namespace re-exports **only** the stage-independent
+infrastructure every project reaches for, no matter which stage it's in:
+
+```python
+from ds import Settings, get_settings, get_logger, seed_everything
+```
+
+That is the whole flat surface — there is no `from ds import summarize`. The
+choice is deliberate:
+
+- **The stage is the teaching tool.** `from ds.features import one_hot_encode`
+  says *this is a feature step*; a flat `ds.one_hot_encode` throws that away.
+- **`import ds` stays cheap.** Because the top level doesn't re-export the
+  stages, importing `ds` never drags in matplotlib (via `ds.viz`), scikit-learn
+  (via `ds.modeling`), or the optional NLP/timeseries stacks. You pay for a
+  stage only when you import it.
+- **No cross-stage collisions.** Each stage owns its own namespace, so names
+  never have to be disambiguated in one flat pile.
+
+`ds.pipeline.Pipeline` (and `PipelineStep`) follow the same rule — imported from
+`ds.pipeline`, not the top level — since a pipeline *composes* stage transforms
+rather than being infrastructure of its own. `tests/test_public_api.py` pins
+this surface so it can't drift.
+
 ## Cookbook
 
 Short, copy-pasteable recipes, in lifecycle order. Every function has full type

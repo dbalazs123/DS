@@ -92,10 +92,18 @@ Things that cost a round-trip to discover; save yourself the CI failure:
 - **The `test-extras` CI job installs only `tiktoken`** (deliberately avoids the
   heavy `nlp`/`all` stacks — torch, sktime). If you add code behind another
   extra, widen that job so the new path is actually exercised.
-- **Public-API convention:** stage functions are imported by stage
-  (`from ds.eda import ...`); only cross-cutting helpers are re-exported from
-  `src/ds/__init__.py`. The package version is single-sourced there via Hatch's
-  dynamic version (`[tool.hatch.version]`).
+- **Public-API convention (settled — import by stage):** stage functions are
+  imported by stage (`from ds.eda import ...`), and `ds.pipeline.Pipeline` /
+  `PipelineStep` likewise from `ds.pipeline`; only the stage-independent
+  infrastructure (`Settings`, `get_settings`, `get_logger`, `seed_everything`)
+  is re-exported from `src/ds/__init__.py`. This was the deliberate resolution
+  of the "API discoverability" question (see ROADMAP.md): a flat top-level
+  re-export was rejected because the stage name is the teaching tool, and
+  because re-exporting the stages would force `import ds` to eagerly load
+  matplotlib/scikit-learn and risk cross-stage name collisions.
+  `tests/test_public_api.py` pins the exact top-level surface, so widening or
+  narrowing it fails CI. The package version is single-sourced in
+  `src/ds/__init__.py` via Hatch's dynamic version (`[tool.hatch.version]`).
 - **Reuse across stages** rather than duplicating (e.g. `ds.viz` plots call
   `ds.eda` / `ds.evaluation` functions).
 - **Sanitize user-facing input paths.** `ds new`'s slug collapses any

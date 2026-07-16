@@ -7,6 +7,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `tests/test_public_api.py` pins the curated top-level `ds` surface
+  (`Settings`, `get_settings`, `get_logger`, `seed_everything`, `__version__`),
+  asserts stage helpers and `ds.pipeline.Pipeline` are *not* re-exported, and
+  checks that `import ds` stays cheap (loads no matplotlib/scikit-learn).
 - `ds.pipeline`: a composable fit-once/apply-many `Pipeline` over the
   `fit_*`/`apply_*` pairs. A `Pipeline` holds an ordered tuple of
   `PipelineStep`s — each pairing fitted parameters with the `apply_*`
@@ -70,6 +74,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `nbstripout` pre-commit hook to strip notebook outputs before they reach git.
 
 ### Changed
+- **API discoverability settled: DS keeps the strict import-by-stage
+  convention** — no flat top-level re-export of stage helpers, and
+  `ds.pipeline.Pipeline` stays `from ds.pipeline import Pipeline`. The top-level
+  `ds` namespace re-exports only stage-independent infrastructure, so `import
+  ds` stays cheap and stages can't collide in one flat namespace. Documented in
+  `docs/guide.md` ("Importing from DS"), `docs/index.md`, `README.md` and
+  `CLAUDE.md`; recorded with its rationale in `ROADMAP.md`. No behavior change —
+  every existing import keeps working.
 - `projects/_example/pipeline.py`'s fresh-rows step now saves and reloads one
   `ds.pipeline.Pipeline` (impute region → encode region → scale calendar
   features) instead of three separate parameter files, keeping the
