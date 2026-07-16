@@ -12,6 +12,8 @@
 
 ::: ds.features
 
+::: ds.pipeline
+
 ::: ds.modeling
 
 ::: ds.evaluation

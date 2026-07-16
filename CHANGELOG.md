@@ -7,6 +7,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `ds.pipeline`: a composable fit-once/apply-many `Pipeline` over the
+  `fit_*`/`apply_*` pairs. A `Pipeline` holds an ordered tuple of
+  `PipelineStep`s — each pairing fitted parameters with the `apply_*`
+  transform it means via a `kind` tag (which is how one `OutlierBounds`
+  serves both `"clip_outliers"` and `"flag_outliers"`; the flag form adds
+  boolean `<column>_outlier` columns) — applies them all with one
+  `apply(df)` call, and persists through the existing
+  `ds.io.save_params`/`load_params` machinery by delegating to the per-class
+  `to_dict`/`from_dict` round-trips. Step order and same-type duplicate
+  steps survive the round-trip; `from_dict` fails with an error naming the
+  offending step on unknown kinds or malformed/stale payloads. Train-time-only
+  parameters (target-column fits) deliberately stay out of a pipeline —
+  see the new "Compose the applies into one pipeline" cookbook section in
+  `docs/guide.md`.
 - Persistable fit parameters: every `fit_*` dataclass (`OutlierBounds`,
   `ImputeValues`, `ScaleParams`, `OneHotCategories`, `OrdinalCategories`) now
   has a validated `to_dict`/`from_dict` round-trip, and `ds.io` gained
@@ -56,6 +70,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `nbstripout` pre-commit hook to strip notebook outputs before they reach git.
 
 ### Changed
+- `projects/_example/pipeline.py`'s fresh-rows step now saves and reloads one
+  `ds.pipeline.Pipeline` (impute region → encode region → scale calendar
+  features) instead of three separate parameter files, keeping the
+  train-time-only target-column bounds/fill persisted individually;
+  `tests/test_example.py` mirrors the new flow.
 - `projects/_example/pipeline.py` now saves all five fitted parameter objects
   next to its processed data with `save_params` and rebuilds them from disk
   with `load_params` to score fresh rows that did not exist at fit time

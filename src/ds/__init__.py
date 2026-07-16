@@ -13,7 +13,9 @@ Each subpackage owns one stage of the lifecycle:
 - :mod:`ds.viz` — plotting with a consistent theme
 
 Cross-cutting concerns live at the top level: :mod:`ds.config`,
-:mod:`ds.logging` and :mod:`ds.reproducibility`.
+:mod:`ds.logging`, :mod:`ds.reproducibility`, and :mod:`ds.pipeline`, which
+composes the stages' ``fit_*``/``apply_*`` pairs into a persistable
+fit-once/apply-many pipeline.
 """
 
 from __future__ import annotations

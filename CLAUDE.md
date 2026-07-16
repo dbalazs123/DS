@@ -20,6 +20,7 @@ in the **same** change.
 ├── Makefile               # thin task wrappers (make help)
 ├── src/ds/                # reusable library, organized by DS process
 │   ├── config.py logging.py reproducibility.py cli.py   # cross-cutting + `ds` CLI
+│   ├── pipeline.py        # fit-once/apply-many Pipeline over the fit_*/apply_* pairs
 │   ├── _serde.py          # private: fitted-parameter dict/JSON round-trip helpers
 │   ├── io/ validation/ preprocessing/ eda/ features/
 │   ├── modeling/          # tabular.py timeseries.py nlp.py
