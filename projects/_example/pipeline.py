@@ -2,8 +2,13 @@
 
 It exercises the library's full stage set on realistically dirty data to prove
 the toolkit composes into a real workflow: generate (dirty) → save/load →
-validate → clean → feature-engineer → time-split → model → evaluate →
-visualize.
+validate → structural clean → time-split → fit-on-train/apply-to-both
+(clip, impute, encode, scale) → model → evaluate → visualize.
+
+Every statistic-learning transform is fitted on the training window only and
+applied to both splits with the ``fit_*`` / ``apply_*`` pairs, so the held-out
+window never leaks into the clip bounds, fill values, category vocabulary or
+scaling parameters.
 
 Run it with::
 
@@ -25,16 +30,24 @@ from sklearn.linear_model import LinearRegression
 
 from ds import Settings, get_logger, seed_everything
 from ds.evaluation import regression_metrics
-from ds.features import add_datetime_features, one_hot_encode, scale_features
+from ds.features import (
+    add_datetime_features,
+    apply_one_hot_encode,
+    apply_scale_features,
+    fit_one_hot_categories,
+    fit_scale_params,
+)
 from ds.io import load_raw, save_processed, save_table
 from ds.modeling.tabular import split_features_target
 from ds.modeling.timeseries import train_test_split_by_time
 from ds.preprocessing import (
-    clip_outliers,
+    apply_clip_outliers,
+    apply_impute_missing,
     coerce_dtypes,
     drop_constant_columns,
     drop_duplicate_rows,
-    impute_missing,
+    fit_impute_values,
+    fit_outlier_bounds,
     standardize_column_names,
 )
 from ds.validation import assert_no_nulls, check_schema, require_columns
@@ -107,26 +120,47 @@ def run(output_dir: Path) -> dict[str, float]:
             {"date": "datetime64[ns]", "total_sales": "float64", "region": "object"},
         )
 
-        # 3. Clean.
+        # 3. Structural clean — nothing here learns statistics, so it is safe
+        # before the split.
         dirty = df.copy()  # kept for the outlier plot, before clipping erases them
         df = coerce_dtypes(df, {"region": "category"})
         df = drop_duplicate_rows(df)
         df = drop_constant_columns(df)  # region now varies, so it survives this time
-        df = clip_outliers(df, columns=["total_sales"])
-        df = impute_missing(df, columns=["total_sales"], strategy="median")
-        df = impute_missing(df, columns=["region"], strategy="most_frequent")
-        assert_no_nulls(df)
 
-        # 4. Feature engineering (keep `date` for ordering, drop it before modeling).
-        df = add_datetime_features(df, "date", drop=False)
-        df = one_hot_encode(df, columns=["region"])
-        date_parts = ["date_year", "date_month", "date_day", "date_dayofweek"]
-        df = scale_features(df, columns=date_parts)
-
-        save_processed(df, "sales_features.parquet", settings=settings)
-
-        # 5. Chronological split — the test set is strictly in the future.
+        # 4. Chronological split — the test set is strictly in the future, and
+        # it happens *before* any statistic-learning transform so nothing below
+        # can leak the test window back into training.
         train, test = train_test_split_by_time(df, "date")
+
+        # 5. Fit on train, apply to both — clip bounds, fill values, category
+        # vocabulary and scaling parameters all come from the training window.
+        bounds = fit_outlier_bounds(train, columns=["total_sales"])
+        train = apply_clip_outliers(train, bounds)
+        test = apply_clip_outliers(test, bounds)
+
+        sales_fill = fit_impute_values(train, columns=["total_sales"], strategy="median")
+        region_fill = fit_impute_values(train, columns=["region"], strategy="most_frequent")
+        train = apply_impute_missing(apply_impute_missing(train, sales_fill), region_fill)
+        test = apply_impute_missing(apply_impute_missing(test, sales_fill), region_fill)
+        assert_no_nulls(train)
+        assert_no_nulls(test)
+
+        # Calendar features are stateless, so each split expands its own dates
+        # (keep `date` for ordering, drop it before modeling).
+        train = add_datetime_features(train, "date", drop=False)
+        test = add_datetime_features(test, "date", drop=False)
+
+        vocabulary = fit_one_hot_categories(train, columns=["region"])
+        train = apply_one_hot_encode(train, vocabulary)
+        test = apply_one_hot_encode(test, vocabulary)
+
+        date_parts = ["date_year", "date_month", "date_day", "date_dayofweek"]
+        scaling = fit_scale_params(train, columns=date_parts)
+        train = apply_scale_features(train, scaling)
+        test = apply_scale_features(test, scaling)
+
+        save_processed(pd.concat([train, test]), "sales_features.parquet", settings=settings)
+
         x_train, y_train = split_features_target(train.drop(columns=["date"]), "total_sales")
         x_test, y_test = split_features_target(test.drop(columns=["date"]), "total_sales")
 

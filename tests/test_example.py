@@ -12,6 +12,8 @@ import importlib.util
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 EXAMPLE_PATH = Path(__file__).resolve().parent.parent / "projects" / "_example" / "pipeline.py"
 
 
@@ -51,18 +53,27 @@ def test_example_pipeline_runs_end_to_end(tmp_path: Path) -> None:
     assert (tmp_path / "outliers.png").is_file()
 
 
-def test_example_pipeline_cleans_and_encodes(tmp_path: Path) -> None:
+def test_example_pipeline_cleans_and_encodes_split_safely(tmp_path: Path) -> None:
     example = _load_example()
 
     from ds import Settings, seed_everything
-    from ds.features import add_datetime_features, one_hot_encode, scale_features
+    from ds.features import (
+        add_datetime_features,
+        apply_one_hot_encode,
+        apply_scale_features,
+        fit_one_hot_categories,
+        fit_scale_params,
+    )
     from ds.io import load_raw, save_table
+    from ds.modeling.timeseries import train_test_split_by_time
     from ds.preprocessing import (
-        clip_outliers,
+        apply_clip_outliers,
+        apply_impute_missing,
         coerce_dtypes,
         drop_constant_columns,
         drop_duplicate_rows,
-        impute_missing,
+        fit_impute_values,
+        fit_outlier_bounds,
         standardize_column_names,
     )
     from ds.validation import check_schema, require_columns
@@ -84,21 +95,46 @@ def test_example_pipeline_cleans_and_encodes(tmp_path: Path) -> None:
     df = drop_constant_columns(df)
     assert "region" in df.columns  # non-constant, so it survives cleaning
 
-    lower, upper = df["total_sales"].min(), df["total_sales"].max()
-    df = clip_outliers(df, columns=["total_sales"])
-    # Clipping should have pulled the injected spikes back inside the original range.
-    assert df["total_sales"].max() <= upper
-    assert df["total_sales"].min() >= lower
+    # Split first: everything below fits on train only and applies to both.
+    train, test = train_test_split_by_time(df, "date")
 
-    df = impute_missing(df, columns=["total_sales"], strategy="median")
-    df = impute_missing(df, columns=["region"], strategy="most_frequent")
-    assert df.isna().sum().sum() == 0
+    bounds = fit_outlier_bounds(train, columns=["total_sales"])
+    lower, upper = bounds.bounds["total_sales"]
+    train = apply_clip_outliers(train, bounds)
+    test = apply_clip_outliers(test, bounds)
+    # Both splits are clipped to the *train*-fitted fence.
+    assert train["total_sales"].max() <= upper
+    assert test["total_sales"].max() <= upper
+    assert test["total_sales"].min() >= lower
 
-    df = add_datetime_features(df, "date", drop=False)
-    df = one_hot_encode(df, columns=["region"])
-    encoded_columns = [c for c in df.columns if c.startswith("region_")]
+    sales_fill = fit_impute_values(train, columns=["total_sales"], strategy="median")
+    region_fill = fit_impute_values(train, columns=["region"], strategy="most_frequent")
+    # The learned fill is the training window's median, not the test window's.
+    assert sales_fill.fill_values["total_sales"] == pytest.approx(
+        float(train["total_sales"].median())
+    )
+    train = apply_impute_missing(apply_impute_missing(train, sales_fill), region_fill)
+    test = apply_impute_missing(apply_impute_missing(test, sales_fill), region_fill)
+    assert train.isna().sum().sum() == 0
+    assert test.isna().sum().sum() == 0
+
+    train = add_datetime_features(train, "date", drop=False)
+    test = add_datetime_features(test, "date", drop=False)
+
+    vocabulary = fit_one_hot_categories(train, columns=["region"])
+    train = apply_one_hot_encode(train, vocabulary)
+    test = apply_one_hot_encode(test, vocabulary)
+    encoded_columns = [c for c in train.columns if c.startswith("region_")]
     assert encoded_columns
-    assert "region" not in df.columns
+    assert "region" not in train.columns
+    # The fixed vocabulary yields identical column sets on both splits.
+    assert list(train.columns) == list(test.columns)
 
-    df = scale_features(df, columns=["date_year", "date_month", "date_day", "date_dayofweek"])
-    assert abs(df["date_month"].mean()) < 1e-6
+    date_parts = ["date_year", "date_month", "date_day", "date_dayofweek"]
+    scaling = fit_scale_params(train, columns=date_parts)
+    train = apply_scale_features(train, scaling)
+    test = apply_scale_features(test, scaling)
+    assert abs(train["date_month"].mean()) < 1e-6
+    # The test window sits in train's future, so train-fitted scaling maps it
+    # beyond train's standardized range rather than re-centering it at zero.
+    assert test["date_month"].mean() > train["date_month"].mean()

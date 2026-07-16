@@ -7,6 +7,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Split-safe `fit_*`/`apply_*` pairs for every statistic-learning transform,
+  each returning/consuming a small frozen parameters dataclass so statistics
+  can be fitted on the training split and reused on test data or new rows:
+  `ds.preprocessing.fit_outlier_bounds` (`OutlierBounds`) with
+  `apply_clip_outliers`/`apply_flag_outliers`, `fit_impute_values`
+  (`ImputeValues`) with `apply_impute_missing`, and
+  `ds.features.fit_scale_params` (`ScaleParams`) with `apply_scale_features`,
+  `fit_one_hot_categories` (`OneHotCategories`) with `apply_one_hot_encode`,
+  `fit_ordinal_categories` (`OrdinalCategories`) with `apply_ordinal_encode`.
+  The fixed category vocabulary guarantees identical encoded columns on every
+  frame (unseen categories → all-zero indicators / `-1` codes). The existing
+  single-call forms are now thin fit-and-apply-on-the-same-frame wrappers with
+  unchanged behavior. `docs/guide.md` gained a "Fit on train, apply to test"
+  cookbook section.
 - `ROADMAP.md` and an "Engineering notes" section in `CLAUDE.md` capturing the
   planned stage build-out and hard-won tooling gotchas.
 - `ds.eda`: `missing_value_report` (columns with gaps, ranked) and
@@ -31,6 +45,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `nbstripout` pre-commit hook to strip notebook outputs before they reach git.
 
 ### Changed
+- `projects/_example/pipeline.py` now splits chronologically *before* any
+  statistic-learning transform and runs clip → impute → one-hot → scale as
+  fit-on-train/apply-to-both via the new `fit_*`/`apply_*` pairs, so the
+  held-out window no longer leaks into the learned statistics;
+  `tests/test_example.py` asserts the split-safe behavior.
 - Package version is now single-sourced from `__version__` in
   `src/ds/__init__.py` via Hatch's dynamic version, instead of being duplicated
   in `pyproject.toml`.
