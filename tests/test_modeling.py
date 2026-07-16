@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import matplotlib as mpl
 import pandas as pd
 import pytest
+from sklearn.linear_model import LinearRegression
 
 from ds.evaluation import (
     classification_metrics,
@@ -13,6 +16,7 @@ from ds.evaluation import (
     regression_metrics,
 )
 from ds.modeling.nlp import count_tokens
+from ds.modeling.persistence import load_model, save_model
 from ds.modeling.tabular import split_features_target
 from ds.modeling.timeseries import train_test_split_by_time
 from ds.viz import set_theme
@@ -69,6 +73,29 @@ def test_per_class_metrics_breaks_out_each_label() -> None:
     assert frame.index.name == "label"
     assert frame.loc[1, "support"] == 2
     assert frame.loc[1, "f1"] == 1.0
+
+
+def test_model_round_trips_through_disk(tmp_path: Path) -> None:
+    x = pd.DataFrame({"a": [1.0, 2.0, 3.0, 4.0], "b": [0.0, 1.0, 0.0, 1.0]})
+    y = pd.Series([2.0, 4.5, 6.0, 8.5])
+    model = LinearRegression().fit(x, y)
+
+    saved_to = save_model(model, tmp_path / "artifacts" / "model.joblib")
+    assert saved_to.exists()  # parent directory was created
+
+    reloaded = load_model(saved_to)
+    assert reloaded.predict(x).tolist() == model.predict(x).tolist()
+
+
+def test_save_model_accepts_str_path(tmp_path: Path) -> None:
+    path = save_model(LinearRegression(), str(tmp_path / "model.joblib"))
+    assert isinstance(path, Path)
+    assert path.exists()
+
+
+def test_load_model_missing_file_names_path(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="nope.joblib"):
+        load_model(tmp_path / "nope.joblib")
 
 
 def test_count_tokens_fallback() -> None:

@@ -73,8 +73,8 @@ more detail).
 
 ## Roadmap
 
-[`ROADMAP.md`](ROADMAP.md) carries the plan of record (next up: model
-persistence, then Model/Evaluate build-out), a goal evaluation of the whole
+[`ROADMAP.md`](ROADMAP.md) carries the plan of record (next up: the
+Model/Evaluate build-out), a goal evaluation of the whole
 toolkit, the friction backlog from the real-data `nyc_taxis` project, and the
 settled-decision rationales this file's notes point to. Read it before starting
 new library work — and note its ordering rule: new library work should trace to

@@ -251,6 +251,12 @@ payload against the class you ask for, so a stale, hand-edited or
 wrong-type file fails with a clear error instead of building broken
 parameters.
 
+Pair them with `ds.modeling.persistence.save_model`/`load_model` (see
+[Model](#model-dsmodeling)) and the scoring run reloads *everything* — fitted
+transforms **and** estimator — from disk, with no refitting and no in-memory
+carryover. Both worked projects (`projects/_example`, `projects/nyc_taxis`)
+run exactly that loop.
+
 #### Compose the applies into one pipeline
 
 Once several parameters are fitted, a scoring run shouldn't have to re-string
@@ -306,6 +312,23 @@ from ds.modeling.timeseries import train_test_split_by_time
 train, test = train_test_split_by_time(df, "date", test_size=0.2)
 x_train, y_train = split_features_target(train, "amount")
 ```
+
+Once an estimator is fitted, persist it so a later run (or another process)
+scores without refitting — the model-side counterpart to
+`save_params`/`load_params`:
+
+```python
+from ds.modeling.persistence import load_model, save_model
+
+save_model(model, "artifacts/model.joblib")   # training run
+model = load_model("artifacts/model.joblib")  # scoring run
+preds = model.predict(x_new)
+```
+
+**Trust boundary:** `load_model` unpickles the file (via `joblib`), which can
+execute arbitrary code — only load model files written by you or a process you
+trust. Fitted *transform* parameters don't carry this risk; they persist as
+validated JSON via `save_params`/`load_params`.
 
 Text work lives here too (needs the `nlp` extra for an accurate count, otherwise
 falls back to a whitespace estimate):

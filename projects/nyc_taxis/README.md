@@ -12,13 +12,17 @@ post-ride columns (`tip`, `tolls`, `total`) that would leak the target.
 
 The pipeline downloads the CSV once into `data/raw/` (git-ignored) and runs
 fetch → validate → explore → clean → chronological split →
-fit-on-train/apply-to-both → persist the scoring `Pipeline` → linear model →
-evaluate against a naive train-mean baseline → residual plot.
+fit-on-train/apply-to-both → persist the scoring `Pipeline` and the fitted
+model (`ds.modeling.persistence`) → score the held-out window from the
+*reloaded* model → evaluate against a naive train-mean baseline → residual
+plot.
 
 This project exists to run the workspace's demand loop: friction it surfaced
-in the library (no `hour` from `add_datetime_features`, no high-cardinality
-encoder, no model persistence, no baseline estimators) is recorded in
-[`ROADMAP.md`](../../ROADMAP.md).
+in the library is recorded in [`ROADMAP.md`](../../ROADMAP.md). Its first
+item — no model persistence — has since been closed by
+`ds.modeling.persistence.save_model`/`load_model`, which this pipeline now
+uses; still open: no `hour` from `add_datetime_features`, no high-cardinality
+encoder, no baseline estimators.
 
 ## Run
 

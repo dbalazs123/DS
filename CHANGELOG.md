@@ -7,6 +7,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `ds.modeling.persistence`: `save_model`/`load_model` persist a fitted
+  estimator with `joblib` (now a declared core dependency — it was already
+  present transitively via scikit-learn), completing the fit-once/score-later
+  story: fitted transform parameters travel as validated JSON
+  (`save_params`/`load_params`) and the model as a joblib file, so a later
+  run reloads both and scores with no refitting or in-memory carryover.
+  `load_model` documents the unpickling trust boundary (only load files you
+  or a trusted process wrote — the reason parameters deliberately stay in
+  JSON). Both worked projects now run the reload loop end to end, closing the
+  top item of the `nyc_taxis` friction backlog; the guide's Model section
+  documents the pattern. Next up per `ROADMAP.md`: the Model/Evaluate
+  build-out (P3).
 - `projects/nyc_taxis`: the first project on **real** data — fare prediction
   over the 6,433-ride March-2019 NYC taxis sample (seaborn `taxis`, mirrored
   from the NYC TLC trip records; downloaded once into git-ignored

@@ -9,8 +9,9 @@ temporal signal is the hour of day.
 
 The pipeline runs the full lifecycle on ``ds`` + scikit-learn alone: fetch →
 validate → explore → clean → chronological split → fit-on-train/apply-to-both →
-persist the scoring pipeline → model → evaluate against a naive baseline →
-visualize. Friction it surfaced in the library is recorded in ``ROADMAP.md``.
+persist the scoring pipeline and the fitted model → score from the reloaded
+model → evaluate against a naive baseline → visualize. Friction it surfaced in
+the library is recorded in ``ROADMAP.md``.
 
 Run it with::
 
@@ -37,6 +38,7 @@ from ds.eda import missing_value_report, summarize
 from ds.evaluation import regression_metrics
 from ds.features import add_datetime_features, fit_one_hot_categories, fit_scale_params
 from ds.io import load_raw, save_params, save_processed
+from ds.modeling.persistence import load_model, save_model
 from ds.modeling.tabular import split_features_target
 from ds.modeling.timeseries import train_test_split_by_time
 from ds.pipeline import Pipeline, PipelineStep
@@ -187,16 +189,18 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     assert_no_nulls(train)
     assert_no_nulls(test)
 
-    # 7. Persist the processed data and the whole scoring pipeline. The fitted
-    # *model* cannot be persisted with ds yet (no save_model/load_model) — a
-    # gap this project surfaced; see ROADMAP.md.
+    # 7. Persist the processed data and the whole scoring pipeline.
     save_processed(pd.concat([train, test]), "taxis_features.parquet", settings=settings)
-    save_params(scoring, settings.processed_dir / "params" / "taxis_scoring.json")
+    params_dir = settings.processed_dir / "params"
+    save_params(scoring, params_dir / "taxis_scoring.json")
 
-    # 8. Model.
+    # 8. Model — fitted once, persisted next to the scoring pipeline, and the
+    # held-out window scored from the *reloaded* copy, proving a later run
+    # needs only the files on disk (closing this project's friction item 1).
     x_train, y_train = split_features_target(train, _TARGET)
     x_test, y_test = split_features_target(test, _TARGET)
-    model = LinearRegression().fit(x_train, y_train)
+    save_model(LinearRegression().fit(x_train, y_train), params_dir / "taxis_model.joblib")
+    model = load_model(params_dir / "taxis_model.joblib")
     preds = model.predict(x_test)
 
     # 9. Evaluate — against a naive predict-the-train-mean baseline, built by
