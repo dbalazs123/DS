@@ -237,14 +237,30 @@ just shelling out.
 traversal rejection, exit-code propagation, and the not-found listing;
 `docs/guide.md`, `README.md` and `CLAUDE.md` document `ds run`.
 
-## Later / bigger bets
+## Done — docs cookbook: cross-stage recipes
 
-The remaining open item:
+**Decision: add the highest-value cross-stage recipes, not every possible
+combination.** The per-stage cookbook already walked every stage in sync with
+the worked example; the open gap was combinations a reader would reach for
+but couldn't yet copy-paste — validating at the acquire boundary, screening
+for redundant features before scaling, and closing the model → evaluate →
+visualize loop with a real estimator. Each is a short, runnable snippet in
+the existing cookbook voice, using the settled import-by-stage convention and
+verified against the current signatures (`docs/guide.md`, "Validate what you
+just loaded", "Screen for redundant features before scaling", and "Fit,
+evaluate and diagnose a model in one pass").
 
-- **Docs cookbook** — mostly covered now: `docs/guide.md` already walks every
-  stage with copy-pasteable recipes, kept in sync with the worked example.
-  What's left is smaller — recipes for less-common combinations as they come
-  up — rather than a first pass.
+Candidates considered and **skipped** as not clearing the bar: binning a
+continuous target into classes to reuse `ds.evaluation.classification_metrics`
+(a real pattern, but a stretch of `bin_column`'s documented purpose rather
+than a natural combination); combining `ds.io.save_params`/`Pipeline`
+persistence with a second, unrelated artifact store (already fully covered by
+the existing "Persist the fitted parameters" / "Compose the applies into one
+pipeline" sections — would be padding, not new ground).
+
+The remaining work is the same as before, just smaller: add a recipe here if
+and when a new less-common combination actually comes up in practice, rather
+than pre-building a catalog of hypothetical ones.
 
 ## Working agreement
 

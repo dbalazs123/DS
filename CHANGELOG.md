@@ -7,6 +7,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `docs/guide.md` cookbook gained three cross-stage recipes for combinations
+  the per-stage walkthrough didn't cover: validating right after
+  `load_raw`/`load_table` with `check_schema` (acquire + validate), using
+  `top_correlations` to screen out redundant features before
+  `scale_features` (explore + feature), and fitting a scikit-learn estimator
+  and closing the loop with `regression_metrics` and `plot_residuals` (model +
+  evaluate + visualize). Closes the "Docs cookbook" item in `ROADMAP.md`.
 - `ds run <name>`: run a project's `pipeline.py` by name. It resolves the name
   against the real directories under `projects/`, matching the literal name or
   the same slug `ds new` derives (`"Customer Churn"`, `customer_churn` and

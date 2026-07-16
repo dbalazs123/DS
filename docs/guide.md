@@ -366,6 +366,65 @@ settings = get_settings()           # paths: settings.raw_dir, .processed_dir
 logger = get_logger(__name__)
 ```
 
+### Validate what you just loaded
+
+`load_raw`/`load_table` don't validate — pair them with `check_schema` right
+at the acquire boundary so a malformed file fails on read, not three stages
+later inside a transform that assumes clean input:
+
+```python
+from ds.io import load_raw
+from ds.validation import check_schema
+
+df = check_schema(
+    load_raw("sales.csv"),
+    {"date": "datetime64[ns]", "amount": "float64", "category": "str"},
+    coerce=True,
+)
+```
+
+### Screen for redundant features before scaling
+
+`top_correlations` isn't just an exploratory printout — run it right before
+feature scaling to catch near-duplicate numeric columns (a copy-pasted unit
+conversion, a feature and its rolling average) so you drop one side instead of
+feeding a model two collinear inputs:
+
+```python
+from ds.eda import top_correlations
+from ds.features import scale_features
+
+redundant = top_correlations(df, n=5)
+to_drop = redundant.loc[redundant["correlation"].abs() > 0.95, "feature_b"]
+df = df.drop(columns=list(to_drop))
+df = scale_features(df, ["amount", "amount_rolling_7d"], method="standard")
+```
+
+### Fit, evaluate and diagnose a model in one pass
+
+`ds.modeling` only splits data — pair it with `ds.evaluation` and `ds.viz` to
+close the loop from features to a diagnostic plot, using any scikit-learn-style
+estimator:
+
+```python
+from sklearn.linear_model import LinearRegression
+
+from ds.evaluation import regression_metrics
+from ds.modeling.tabular import split_features_target
+from ds.modeling.timeseries import train_test_split_by_time
+from ds.viz import plot_residuals
+
+train, test = train_test_split_by_time(df, "date", test_size=0.2)
+x_train, y_train = split_features_target(train.drop(columns=["date"]), "amount")
+x_test, y_test = split_features_target(test.drop(columns=["date"]), "amount")
+
+model = LinearRegression().fit(x_train, y_train)
+y_pred = model.predict(x_test)
+
+regression_metrics(y_test, y_pred)   # mae, rmse, r2
+plot_residuals(y_test, y_pred)       # residual-vs-predicted diagnostic
+```
+
 ## Starting a new project
 
 Projects live under `projects/`, one directory each, and *consume* the library
