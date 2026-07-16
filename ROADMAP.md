@@ -13,7 +13,7 @@ some are still thin. Built out so far:
 | Stage | Module | Status |
 |-------|--------|--------|
 | Acquire | `ds.io` | thin — `load_table`, `save_table` |
-| Validate | `ds.validation` | thin — `require_columns`, `assert_no_nulls` |
+| Validate | `ds.validation` | `require_columns`, `assert_no_nulls`, `assert_in_range`, `assert_in_set`, `assert_dtypes`, `check_schema` |
 | Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns`, `drop_duplicate_rows`, `coerce_dtypes`, `flag_outliers`, `clip_outliers`, `impute_missing` |
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
 | Feature | `ds.features` | `add_datetime_features`, `one_hot_encode`, `ordinal_encode`, `scale_features`, `bin_column` |
@@ -37,9 +37,8 @@ extra and must degrade gracefully.
   `ds.viz.plot_outliers`).
 - **`ds.features`** — ✅ done (`one_hot_encode`, `ordinal_encode`,
   `scale_features`, `bin_column`).
-- **`ds.validation`** — assert a column's values fall in a range or an allowed
-  set; assert expected dtypes; a lightweight expected-schema check (there's
-  already a `pandera` dependency worth leaning on here).
+- **`ds.validation`** — ✅ done (`assert_in_range`, `assert_in_set`,
+  `assert_dtypes`, and a `pandera`-backed `check_schema`).
 - **`ds.io`** — support more formats; add a `data/`-aware pair
   (`load_raw` / `save_processed`) that resolves paths via `ds.config` settings.
 

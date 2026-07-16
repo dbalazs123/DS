@@ -37,10 +37,27 @@ save_table(df, "data/processed/sales.parquet")
 Fail fast on the assumptions a pipeline depends on.
 
 ```python
-from ds.validation import assert_no_nulls, require_columns
+from ds.validation import (
+    assert_dtypes,
+    assert_in_range,
+    assert_in_set,
+    assert_no_nulls,
+    check_schema,
+    require_columns,
+)
 
-require_columns(df, ["date", "amount"])   # raises if a column is missing
-assert_no_nulls(df, ["amount"])           # raises on nulls in `amount`
+require_columns(df, ["date", "amount"])        # raises if a column is missing
+assert_no_nulls(df, ["amount"])                # raises on nulls in `amount`
+assert_in_range(df, "amount", min_value=0)     # raises on negative amounts
+assert_in_set(df, "status", ["open", "closed"])  # raises on unknown values
+assert_dtypes(df, {"amount": "float64"})       # raises on the wrong dtype
+```
+
+For a whole-frame declarative check, `check_schema` leans on `pandera` and can
+coerce dtypes as it validates:
+
+```python
+df = check_schema(df, {"amount": "float64", "status": "str"}, coerce=True)
 ```
 
 ### Clean — `ds.preprocessing`

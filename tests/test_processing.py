@@ -22,7 +22,15 @@ from ds.preprocessing import (
     impute_missing,
     standardize_column_names,
 )
-from ds.validation import DataValidationError, assert_no_nulls, require_columns
+from ds.validation import (
+    DataValidationError,
+    assert_dtypes,
+    assert_in_range,
+    assert_in_set,
+    assert_no_nulls,
+    check_schema,
+    require_columns,
+)
 
 
 def test_require_columns_ok(sample_df: pd.DataFrame) -> None:
@@ -38,6 +46,65 @@ def test_assert_no_nulls_detects_nulls() -> None:
     df = pd.DataFrame({"a": [1, None]})
     with pytest.raises(DataValidationError):
         assert_no_nulls(df)
+
+
+def test_assert_in_range_ok_ignores_nulls() -> None:
+    df = pd.DataFrame({"x": [1.0, 5.0, None]})
+    assert assert_in_range(df, "x", min_value=0, max_value=10) is df
+
+
+def test_assert_in_range_flags_out_of_bounds() -> None:
+    df = pd.DataFrame({"x": [1, 2, 11]})
+    with pytest.raises(DataValidationError, match="11"):
+        assert_in_range(df, "x", max_value=10)
+
+
+def test_assert_in_range_inclusive_neither() -> None:
+    df = pd.DataFrame({"x": [0, 5, 10]})
+    with pytest.raises(DataValidationError):
+        assert_in_range(df, "x", min_value=0, max_value=10, inclusive="neither")
+
+
+def test_assert_in_set_ok_and_offenders() -> None:
+    df = pd.DataFrame({"s": ["a", "b", None]})
+    assert assert_in_set(df, "s", ["a", "b"]) is df
+    with pytest.raises(DataValidationError, match="'c'"):
+        assert_in_set(pd.DataFrame({"s": ["a", "c"]}), "s", ["a", "b"])
+
+
+def test_assert_in_range_missing_column_raises() -> None:
+    with pytest.raises(KeyError):
+        assert_in_range(pd.DataFrame({"a": [1]}), "nope", min_value=0)
+
+
+def test_assert_dtypes_ok_and_mismatch() -> None:
+    df = pd.DataFrame({"n": [1, 2], "s": ["a", "b"]})
+    assert assert_dtypes(df, {"n": "int64"}) is df
+    with pytest.raises(DataValidationError, match="expected"):
+        assert_dtypes(df, {"n": "float64"})
+
+
+def test_assert_dtypes_missing_column() -> None:
+    with pytest.raises(DataValidationError, match="Missing"):
+        assert_dtypes(pd.DataFrame({"a": [1]}), {"b": "int64"})
+
+
+def test_check_schema_validates_and_coerces() -> None:
+    df = pd.DataFrame({"a": ["1", "2"], "b": ["x", "y"]})
+    out = check_schema(df, {"a": "int64", "b": "str"}, coerce=True)
+    assert out["a"].dtype == "int64"
+
+
+def test_check_schema_raises_on_bad_dtype() -> None:
+    df = pd.DataFrame({"a": ["not-an-int"]})
+    with pytest.raises(DataValidationError):
+        check_schema(df, {"a": "int64"})
+
+
+def test_check_schema_strict_rejects_extra_columns() -> None:
+    df = pd.DataFrame({"a": [1], "extra": [2]})
+    with pytest.raises(DataValidationError):
+        check_schema(df, {"a": "int64"}, strict=True)
 
 
 def test_standardize_column_names(sample_df: pd.DataFrame) -> None:
