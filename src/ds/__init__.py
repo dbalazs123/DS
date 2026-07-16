@@ -16,6 +16,15 @@ Cross-cutting concerns live at the top level: :mod:`ds.config`,
 :mod:`ds.logging`, :mod:`ds.reproducibility`, and :mod:`ds.pipeline`, which
 composes the stages' ``fit_*``/``apply_*`` pairs into a persistable
 fit-once/apply-many pipeline.
+
+**Import convention.** Stage functions are imported from their stage
+(``from ds.eda import summarize``, ``from ds.pipeline import Pipeline``); the
+stage name is part of the API, telling you which lifecycle stage a helper
+belongs to. Only the stage-independent infrastructure below is re-exported
+into the top-level ``ds`` namespace — deliberately, so ``import ds`` stays
+cheap (it never pulls in matplotlib via :mod:`ds.viz` or the modeling stacks)
+and no two stages can collide in one flat namespace. See the "Importing from
+DS" section of the Guide for the rationale.
 """
 
 from __future__ import annotations
@@ -28,6 +37,10 @@ from ds.reproducibility import seed_everything
 # (see [tool.hatch.version] in pyproject.toml).
 __version__ = "0.1.0"
 
+# The top-level surface is deliberately just the cross-cutting infrastructure
+# every project reaches for regardless of lifecycle stage. Stage helpers (and
+# ``ds.pipeline.Pipeline``) stay import-by-stage — see the module docstring and
+# ``tests/test_public_api.py``, which pins this list.
 __all__ = [
     "Settings",
     "__version__",

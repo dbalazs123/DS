@@ -134,8 +134,9 @@ Decisions made deliberately, for the record:
   and `ds.reproducibility`), not inside a stage — a pipeline composes
   transforms from *two* stages (`ds.preprocessing` and `ds.features`), so
   homing it in either would couple the stages to each other. Imports run
-  strictly pipeline → stages, so no cycle can form. It is *not* re-exported
-  from `ds/__init__.py`, pending the API-discoverability decision below.
+  strictly pipeline → stages, so no cycle can form. It is imported from
+  `ds.pipeline`, not re-exported from `ds/__init__.py` — the settled
+  import-by-stage convention (see "API discoverability" below).
 - **Typing under `mypy --strict`: a closed union, not a protocol.**
   `StepParams` is the union of the five parameter dataclasses and `StepKind`
   a `Literal` of the six apply forms; dispatch is exhaustive `isinstance`
@@ -162,17 +163,50 @@ Decisions made deliberately, for the record:
 and every edge case above; `docs/guide.md`'s split-safe cookbook section
 documents the pattern.
 
+## Done — API discoverability: import by stage
+
+**Decision: keep the strict import-by-stage convention; do not add a flat
+top-level re-export.** Stage helpers are imported from their stage
+(`from ds.eda import summarize`), and `ds.pipeline.Pipeline` / `PipelineStep`
+from `ds.pipeline`; the top-level `ds` namespace re-exports only the
+stage-independent infrastructure (`Settings`, `get_settings`, `get_logger`,
+`seed_everything`). `Pipeline` does **not** earn a top-level re-export.
+
+Grounded in the codebase's own conventions rather than a fresh preference:
+
+- **The `__all__` policy already drew this line** — `src/ds/__init__.py` has
+  only ever re-exported cross-cutting helpers, and CLAUDE.md's "stage functions
+  are imported by stage" note codified it. The Guide's cookbook and the worked
+  example both teach `from ds.<stage> import ...` throughout. A flat re-export
+  would unwind a convention every existing doc and file already follows.
+- **The stage name is the teaching tool.** `from ds.features import
+  one_hot_encode` says *this is a feature step*; flattening to
+  `ds.one_hot_encode` discards the process organization that is the library's
+  whole reason for its shape.
+- **Cost and collisions (the flagged edge cases).** Re-exporting the stages
+  would force `ds/__init__.py` to import every stage at `import ds` time —
+  including matplotlib via `ds.viz`, scikit-learn via `ds.modeling`, and the
+  optional-extra guards in `ds.modeling.nlp` — and would pile all stages'
+  names into one namespace to be disambiguated. Import-by-stage keeps `import
+  ds` light (verified: no matplotlib/sklearn loaded) and each stage's names
+  contained. `from ds import Settings, get_logger, seed_everything` (relied on
+  by the example and template) is unchanged.
+- **`Pipeline` re-export, specifically:** rejected for symmetry — a pipeline
+  *composes* stage transforms, so re-exporting the composer while its
+  `fit_*`/`apply_*` building blocks stay stage-scoped would be the one
+  inconsistent case. It stays `from ds.pipeline import Pipeline`.
+
+Documented prominently in `docs/guide.md` ("Importing from DS"), `docs/index.md`
+and `README.md`; the convention note in `CLAUDE.md` is expanded; and
+`tests/test_public_api.py` pins the exact top-level surface (and asserts
+`import ds` stays cheap) so it can't drift.
+
 ## Later / bigger bets
 
-The remaining open items:
+The remaining open item:
 
-- **API discoverability** — decide deliberately whether to curate a flat
-  re-export of the most-used functions at the top level, or keep the
-  import-by-stage convention (and document it prominently either way). This
-  also settles whether `ds.pipeline`'s `Pipeline` earns a top-level
-  re-export.
 - **`ds` CLI** — grow beyond `new` (e.g. `ds check`, `ds run`) if it earns its
-  keep.
+  keep. This is now the main open thread.
 - **Docs cookbook** — mostly covered now: `docs/guide.md` already walks every
   stage with copy-pasteable recipes, kept in sync with the worked example.
   What's left is smaller — recipes for less-common combinations as they come

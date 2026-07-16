@@ -29,6 +29,12 @@ uv run python projects/_example/pipeline.py   # run the worked example
 
 Cross-cutting: `ds.config`, `ds.logging`, `ds.reproducibility`.
 
+**Import each helper from its stage** — `from ds.eda import summarize`,
+`from ds.pipeline import Pipeline`. The stage name is part of the API. Only the
+stage-independent infrastructure is re-exported at the top level
+(`from ds import Settings, get_settings, get_logger, seed_everything`); see
+[Importing from DS](guide.md#importing-from-ds) for why.
+
 ## Next steps
 
 - The [Guide](guide.md) walks through each stage with copy-pasteable recipes and
