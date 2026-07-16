@@ -76,6 +76,6 @@ def test_importing_ds_stays_cheap() -> None:
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 0, (
-        f"importing ds eagerly loaded heavy modules: {result.stdout}{result.stderr}"
-    )
+    assert (
+        result.returncode == 0
+    ), f"importing ds eagerly loaded heavy modules: {result.stdout}{result.stderr}"
