@@ -84,7 +84,7 @@ def as_float(value: Any, field: str, type_name: str) -> float:
     ``bool`` is rejected explicitly — it is an ``int`` subclass, and a stray
     ``true`` in a hand-edited file should not silently become ``1.0``.
     """
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, int | float):
         raise ValueError(f"{type_name}.{field} must be a number, got {value!r}")
     return float(value)
 
