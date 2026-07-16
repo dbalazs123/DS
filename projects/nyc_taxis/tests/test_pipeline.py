@@ -64,6 +64,14 @@ def test_pipeline_end_to_end(tmp_path: Path) -> None:
     assert metrics["rmse"] < metrics["baseline_rmse"]
     assert metrics["mae"] < metrics["baseline_mae"]
 
+    # The top-k zone indicators (friction item 4) must add information over
+    # the coarser borough columns — the reason the encoder was promoted.
+    assert metrics["mae"] < metrics["boroughs_only_mae"]
+
+    # The comparison frame carries all three contenders.
+    comparison = pd.read_csv(out / "model_comparison.csv", index_col=0)
+    assert {"linear_regression", "boroughs_only", "train_mean_baseline"} <= set(comparison.index)
+
     # Artifacts: EDA reports, figures, processed data, persisted pipeline
     # and model.
     for name in (
@@ -83,6 +91,7 @@ def test_pipeline_end_to_end(tmp_path: Path) -> None:
     scoring = load_params(settings.processed_dir / "params" / "taxis_scoring.json", Pipeline)
     assert [step.kind for step in scoring.steps] == [
         "clip_outliers",
+        "collapse_categories",
         "impute_missing",
         "one_hot_encode",
         "scale_features",

@@ -192,6 +192,68 @@ class OrdinalCategories:
         return cls(categories=_decode_categories(payload["categories"], "OrdinalCategories"))
 
 
+@dataclass(frozen=True)
+class TopKCategories:
+    """Per-column kept-category sets learned by :func:`fit_topk_categories`.
+
+    Attributes:
+        categories: Mapping of column name to the categories kept as-is,
+            most frequent first.
+        other_label: The label that rare and unseen values collapse to.
+    """
+
+    categories: Mapping[str, tuple[Any, ...]]
+    other_label: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable dict representation.
+
+        Category values must be JSON-representable scalars
+        (str/int/float/bool/``None``); numpy scalars are unwrapped and the
+        tuples become lists (restored by :meth:`from_dict`). Persist the
+        result with :func:`ds.io.save_params` or rebuild the dataclass with
+        :meth:`from_dict`.
+
+        Returns:
+            A dict that round-trips through :meth:`from_dict`.
+        """
+        return {
+            "type": "TopKCategories",
+            "categories": _encode_categories(self.categories),
+            "other_label": self.other_label,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> TopKCategories:
+        """Rebuild a :class:`TopKCategories` from :meth:`to_dict` output.
+
+        Args:
+            data: A mapping as produced by :meth:`to_dict`.
+
+        Returns:
+            The reconstructed :class:`TopKCategories`.
+
+        Raises:
+            ValueError: If ``data`` is not a well-formed ``TopKCategories``
+                payload (wrong type tag, missing/unexpected fields, a
+                non-string other label, a malformed vocabulary, or an other
+                label colliding with a kept category) — e.g. a stale or
+                hand-edited file.
+        """
+        payload = check_payload(data, "TopKCategories", frozenset({"categories", "other_label"}))
+        other_label = payload["other_label"]
+        if not isinstance(other_label, str):
+            raise ValueError(f"TopKCategories.other_label must be a string, got {other_label!r}")
+        categories = _decode_categories(payload["categories"], "TopKCategories")
+        for col, kept in categories.items():
+            if other_label in kept:
+                raise ValueError(
+                    f"TopKCategories.categories[{col!r}] contains the other label "
+                    f"{other_label!r}, which would silently merge kept and collapsed values"
+                )
+        return cls(categories=categories, other_label=other_label)
+
+
 def _encode_categories(categories: Mapping[str, tuple[Any, ...]]) -> dict[str, list[Any]]:
     """Encode a per-column vocabulary as JSON-safe lists of scalars."""
     return {col: [encode_scalar(cat) for cat in cats] for col, cats in categories.items()}
@@ -456,6 +518,125 @@ def ordinal_encode(
     return apply_ordinal_encode(df, fit_ordinal_categories(df, columns, categories=categories))
 
 
+def fit_topk_categories(
+    df: pd.DataFrame,
+    columns: Sequence[str] | None = None,
+    *,
+    k: int,
+    other_label: str = "other",
+) -> TopKCategories:
+    """Learn which categories to keep as-is when collapsing a column's tail.
+
+    The high-cardinality strategy: fix each column's ``k`` most frequent
+    non-null values from one frame — typically the training split — so
+    :func:`apply_collapse_categories` maps every other value (rare at fit
+    time, or unseen entirely) to ``other_label`` on every frame. The
+    collapsed column is low-cardinality, so the existing
+    :func:`fit_one_hot_categories` / :func:`fit_ordinal_categories` pairs can
+    encode it. Ties at the ``k`` boundary break deterministically: higher
+    count first, then ascending value.
+
+    Args:
+        df: The DataFrame to learn frequencies from (typically the training
+            split).
+        columns: Columns to fit; ``None`` fits every ``object``/``category``
+            column.
+        k: How many of the most frequent values to keep per column. A column
+            with at most ``k`` distinct non-null values keeps all of them.
+        other_label: The label rare and unseen values collapse to.
+
+    Returns:
+        The learned :class:`TopKCategories`.
+
+    Raises:
+        KeyError: If a name in ``columns`` is not a column of ``df``.
+        ValueError: If ``k`` is less than 1, or ``other_label`` is itself one
+            of a column's kept values (collapsing onto a real category would
+            silently merge the two).
+    """
+    if k < 1:
+        raise ValueError(f"k must be at least 1, got {k}")
+    resolved = _categorical_columns(df, columns)
+    categories: dict[str, tuple[Any, ...]] = {}
+    for col in resolved:
+        counts = df[col].dropna().value_counts()
+        ranked = sorted(counts.items(), key=lambda item: (-int(item[1]), item[0]))
+        kept = tuple(value for value, _ in ranked[:k])
+        if other_label in kept:
+            raise ValueError(
+                f"other_label {other_label!r} is a kept category of column {col!r}; "
+                "choose a label that does not occur in the data"
+            )
+        categories[col] = kept
+    return TopKCategories(categories=categories, other_label=other_label)
+
+
+def apply_collapse_categories(df: pd.DataFrame, params: TopKCategories) -> pd.DataFrame:
+    """Collapse rare and unseen categories with previously learned kept sets.
+
+    Every value of a fitted column that is not in its kept set — whether it
+    was rare at fit time or never seen at all — becomes ``params.other_label``;
+    kept values pass through unchanged. Missing values stay missing
+    (imputation is a separate step, e.g.
+    :func:`ds.preprocessing.apply_impute_missing`). Fitted columns come back
+    as plain ``object`` columns, ready for the one-hot or ordinal encoders.
+
+    Args:
+        df: The DataFrame to collapse.
+        params: Kept-category sets learned by :func:`fit_topk_categories`.
+
+    Returns:
+        A new DataFrame with the fitted columns collapsed.
+
+    Raises:
+        KeyError: If a fitted column is not a column of ``df``.
+    """
+    missing = [col for col in params.categories if col not in df.columns]
+    if missing:
+        raise KeyError(missing)
+    out = df.copy()
+    for col, kept in params.categories.items():
+        series = df[col].astype(object)
+        keep = series.isin(kept) | series.isna()
+        out[col] = series.where(keep, other=params.other_label)
+    return out
+
+
+def collapse_categories(
+    df: pd.DataFrame,
+    columns: Sequence[str] | None = None,
+    *,
+    k: int,
+    other_label: str = "other",
+) -> pd.DataFrame:
+    """Collapse each column's rare categories into a single ``other`` label.
+
+    Convenience wrapper that learns the ``k`` most frequent values per column
+    from ``df`` and collapses the same frame — fine for exploration or
+    pre-split use. For a train/test workflow use :func:`fit_topk_categories`
+    + :func:`apply_collapse_categories` so both sides keep the same values
+    (and test-only categories collapse instead of leaking new levels).
+
+    Args:
+        df: The source DataFrame.
+        columns: Columns to collapse; ``None`` collapses every
+            ``object``/``category`` column.
+        k: How many of the most frequent values to keep per column.
+        other_label: The label rare values collapse to.
+
+    Returns:
+        A new DataFrame with the selected columns collapsed.
+
+    Raises:
+        KeyError: If a name in ``columns`` is not a column of ``df``.
+        ValueError: If ``k`` is less than 1, or ``other_label`` is itself one
+            of a column's kept values.
+    """
+    return apply_collapse_categories(
+        df, fit_topk_categories(df, columns, k=k, other_label=other_label)
+    )
+
+
 def _numeric_columns(df: pd.DataFrame, columns: Sequence[str] | None) -> list[str]:
     """Resolve the numeric columns to scale, validating any explicit names."""
     if columns is None:
@@ -618,14 +799,18 @@ __all__ = [
     "OneHotCategories",
     "OrdinalCategories",
     "ScaleParams",
+    "TopKCategories",
     "add_datetime_features",
+    "apply_collapse_categories",
     "apply_one_hot_encode",
     "apply_ordinal_encode",
     "apply_scale_features",
     "bin_column",
+    "collapse_categories",
     "fit_one_hot_categories",
     "fit_ordinal_categories",
     "fit_scale_params",
+    "fit_topk_categories",
     "one_hot_encode",
     "ordinal_encode",
     "scale_features",

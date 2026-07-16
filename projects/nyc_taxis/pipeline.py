@@ -11,7 +11,10 @@ The pipeline runs the full lifecycle on ``ds`` + scikit-learn alone: fetch →
 validate → explore → clean → chronological split → fit-on-train/apply-to-both →
 persist the scoring pipeline and the fitted model → score from the reloaded
 model → evaluate against a naive baseline → visualize. Friction it surfaced in
-the library is recorded in ``ROADMAP.md``.
+the library is recorded in ``ROADMAP.md``; the zone columns, originally dropped
+for their cardinality, are consumed via ``fit_topk_categories`` (friction
+item 4, since promoted into the library) and evaluated against a boroughs-only
+variant to check they earn their place.
 
 Run it with::
 
@@ -36,7 +39,13 @@ from sklearn.linear_model import LinearRegression
 from ds import Settings, get_logger, get_settings, seed_everything
 from ds.eda import missing_value_report, summarize
 from ds.evaluation import compare_models, regression_metrics
-from ds.features import add_datetime_features, fit_one_hot_categories, fit_scale_params
+from ds.features import (
+    add_datetime_features,
+    apply_collapse_categories,
+    fit_one_hot_categories,
+    fit_scale_params,
+    fit_topk_categories,
+)
 from ds.io import load_raw, save_params, save_processed
 from ds.modeling.baseline import fit_baseline
 from ds.modeling.persistence import load_model, save_model
@@ -58,12 +67,16 @@ logger = get_logger(__name__)
 DATA_URL = "https://raw.githubusercontent.com/mwaskom/seaborn-data/master/taxis.csv"
 RAW_NAME = "taxis.csv"
 
-# The zone columns carry ~200 distinct values each — too many levels to one-hot
-# and with no meaningful order to ordinal-encode — so the model falls back to
-# the borough columns. tip/tolls/total are post-ride outcomes (total *contains*
-# the fare), so using them to predict the fare would be leakage.
-_DROPPED = ["pickup_zone", "dropoff_zone", "tip", "tolls", "total"]
+# tip/tolls/total are post-ride outcomes (total *contains* the fare), so using
+# them to predict the fare would be leakage.
+_DROPPED = ["tip", "tolls", "total"]
 _CATEGORICAL = ["color", "payment", "pickup_borough", "dropoff_borough"]
+# The zone columns carry ~200 distinct values each — too many levels to one-hot
+# directly and with no meaningful order to ordinal-encode (friction item 4).
+# fit_topk_categories collapses each to its most frequent levels + "other",
+# after which the ordinary one-hot machinery handles them.
+_ZONES = ["pickup_zone", "dropoff_zone"]
+_ZONE_TOP_K = 15
 _NUMERIC_FEATURES = ["distance", "duration_min", "passengers", "pickup_hour"]
 _TARGET = "fare"
 
@@ -117,8 +130,9 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
 
     Returns:
         Regression metrics on the held-out (chronologically last) window,
-        plus ``baseline_``-prefixed counterparts from a predict-the-train-mean
-        reference model.
+        plus ``boroughs_only_``-prefixed counterparts from a variant without
+        the top-k zone indicators and ``baseline_``-prefixed ones from a
+        predict-the-train-mean reference model.
     """
     seed_everything()
     settings = settings or get_settings()
@@ -132,7 +146,7 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     # get imputed split-safely below; what must hold is column presence and
     # parseable dtypes.
     df = standardize_column_names(df)
-    require_columns(df, ["pickup", "dropoff", _TARGET, *_CATEGORICAL])
+    require_columns(df, ["pickup", "dropoff", _TARGET, *_CATEGORICAL, *_ZONES])
     df = check_schema(
         df,
         {
@@ -172,13 +186,16 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     # ordered chain is applied through one Pipeline.
     bounds = fit_outlier_bounds(train, columns=["distance", "duration_min"])
     clipped = apply_clip_outliers(train, bounds)
-    fills = fit_impute_values(clipped, columns=_CATEGORICAL, strategy="most_frequent")
-    vocabulary = fit_one_hot_categories(clipped, columns=_CATEGORICAL)
-    scaling = fit_scale_params(clipped, columns=_NUMERIC_FEATURES)
+    zones = fit_topk_categories(clipped, columns=_ZONES, k=_ZONE_TOP_K)
+    collapsed = apply_collapse_categories(clipped, zones)
+    fills = fit_impute_values(collapsed, columns=_CATEGORICAL + _ZONES, strategy="most_frequent")
+    vocabulary = fit_one_hot_categories(collapsed, columns=_CATEGORICAL + _ZONES)
+    scaling = fit_scale_params(collapsed, columns=_NUMERIC_FEATURES)
 
     scoring = Pipeline(
         steps=(
             PipelineStep("clip_outliers", bounds),
+            PipelineStep("collapse_categories", zones),
             PipelineStep("impute_missing", fills),
             PipelineStep("one_hot_encode", vocabulary),
             PipelineStep("scale_features", scaling),
@@ -205,17 +222,27 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
 
     # 9. Evaluate — side by side with the naive train-mean baseline
     # (ds.modeling.baseline replaced the hand-rolled version this project
-    # originally needed — friction item 3, since promoted into the library).
+    # originally needed — friction item 3, since promoted into the library)
+    # and with a boroughs-only variant, to check whether the top-k zone
+    # indicators actually earn their place over the coarser borough columns.
+    zone_columns = [
+        col for col in x_train.columns if col.startswith(("pickup_zone_", "dropoff_zone_"))
+    ]
+    borough_model = LinearRegression().fit(x_train.drop(columns=zone_columns), y_train)
+    borough_preds = borough_model.predict(x_test.drop(columns=zone_columns))
     baseline = fit_baseline(y_train, strategy="mean")
     comparison = compare_models(
         y_test.tolist(),
         {
             "linear_regression": [float(value) for value in preds],
+            "boroughs_only": [float(value) for value in borough_preds],
             "train_mean_baseline": baseline.predict(len(y_test)),
         },
     )
     comparison.to_csv(output_dir / "model_comparison.csv")
     metrics = regression_metrics(y_test.tolist(), preds.tolist())
+    borough_scores = regression_metrics(y_test.tolist(), borough_preds.tolist())
+    metrics.update({f"boroughs_only_{name}": value for name, value in borough_scores.items()})
     baseline_scores = regression_metrics(y_test.tolist(), baseline.predict(len(y_test)))
     metrics.update({f"baseline_{name}": value for name, value in baseline_scores.items()})
     logger.info("Held-out metrics vs baseline: %s", metrics)

@@ -40,6 +40,8 @@ from ds.features import (
     OneHotCategories,
     OrdinalCategories,
     ScaleParams,
+    TopKCategories,
+    apply_collapse_categories,
     apply_one_hot_encode,
     apply_ordinal_encode,
     apply_scale_features,
@@ -54,13 +56,21 @@ from ds.preprocessing import (
 
 StepKind = Literal[
     "clip_outliers",
+    "collapse_categories",
     "flag_outliers",
     "impute_missing",
     "one_hot_encode",
     "ordinal_encode",
     "scale_features",
 ]
-StepParams = OutlierBounds | ImputeValues | OneHotCategories | OrdinalCategories | ScaleParams
+StepParams = (
+    OutlierBounds
+    | ImputeValues
+    | TopKCategories
+    | OneHotCategories
+    | OrdinalCategories
+    | ScaleParams
+)
 
 # The step-kind registry: maps each kind to the parameter class its apply form
 # consumes. ``from_dict`` resolves classes through it (an unknown kind in a
@@ -70,6 +80,7 @@ StepParams = OutlierBounds | ImputeValues | OneHotCategories | OrdinalCategories
 # rather than by the parameter class's own ``"type"`` tag.
 _KIND_TO_CLASS: dict[str, type[StepParams]] = {
     "clip_outliers": OutlierBounds,
+    "collapse_categories": TopKCategories,
     "flag_outliers": OutlierBounds,
     "impute_missing": ImputeValues,
     "one_hot_encode": OneHotCategories,
@@ -137,6 +148,8 @@ class PipelineStep:
             return apply_clip_outliers(df, params)
         if isinstance(params, ImputeValues):
             return apply_impute_missing(df, params)
+        if isinstance(params, TopKCategories):
+            return apply_collapse_categories(df, params)
         if isinstance(params, OneHotCategories):
             return apply_one_hot_encode(df, params)
         if isinstance(params, OrdinalCategories):

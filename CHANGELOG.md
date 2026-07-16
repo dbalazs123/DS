@@ -7,6 +7,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- High-cardinality categorical strategy in `ds.features` (friction item 4 of
+  `ROADMAP.md`'s backlog — the last open item from the real-data `nyc_taxis`
+  project): `fit_topk_categories`/`apply_collapse_categories` (plus the
+  single-call `collapse_categories`) keep each column's `k` most frequent
+  levels and collapse the rest — including values unseen at fit time — into
+  an `"other"` label, so the existing one-hot/ordinal encoders handle the
+  now-small vocabulary. The fitted `TopKCategories` round-trips through
+  `to_dict`/`from_dict` like the other parameter dataclasses and joins
+  `ds.pipeline` as the `"collapse_categories"` step kind. `nyc_taxis`
+  dogfoods it on the ~200-level zone columns it originally had to drop:
+  vs a boroughs-only variant, held-out MAE improves 2.62 → 2.26 (−14%) and
+  r² 0.729 → 0.765.
 - Model/Evaluate build-out (P3 of `ROADMAP.md`'s plan of record, re-ranked
   against the `nyc_taxis` friction backlog first):
   - `ds.features.add_datetime_features` now also emits ``<column>_hour``
