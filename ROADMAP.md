@@ -7,12 +7,12 @@ for hard-won gotchas, see the "Engineering notes" section of
 
 ## Where things stand
 
-The library is organized by data-science process and each stage is real but
-some are still thin. Built out so far:
+The library is organized by data-science process and every stage now carries a
+working set of the most-reached-for helpers. Built out so far:
 
 | Stage | Module | Status |
 |-------|--------|--------|
-| Acquire | `ds.io` | thin — `load_table`, `save_table` |
+| Acquire | `ds.io` | `load_table`, `save_table` (csv/tsv/parquet/json/jsonl), `load_raw`, `save_processed` |
 | Validate | `ds.validation` | `require_columns`, `assert_no_nulls`, `assert_in_range`, `assert_in_set`, `assert_dtypes`, `check_schema` |
 | Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns`, `drop_duplicate_rows`, `coerce_dtypes`, `flag_outliers`, `clip_outliers`, `impute_missing` |
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
@@ -24,27 +24,25 @@ some are still thin. Built out so far:
 Supporting: `ds` CLI (`ds version`, `ds new`), a per-stage docs Guide, a
 `test-extras` CI job, single-sourced version, and an extended project template.
 
-## Next up — flesh out the thin stages
+## Done — the four thin stages are fleshed out
 
-Add the most-reached-for helpers to the stages every analysis touches. Follow
+Each stage every analysis touches now has its most-reached-for helpers, built to
 the standard recipe: right stage module → Google-style docstring + full type
-hints (`mypy --strict`) → mirroring test → export from `__all__`. Prefer the
-core deps (pandas, numpy, scikit-learn, matplotlib); anything heavier goes in an
-extra and must degrade gracefully.
+hints (`mypy --strict`) → mirroring test → export from `__all__`, favouring the
+core deps (pandas, numpy, scikit-learn, matplotlib).
 
-- **`ds.preprocessing`** — ✅ done (`coerce_dtypes`, `flag_outliers` /
-  `clip_outliers`, `drop_duplicate_rows`, `impute_missing`, paired with
-  `ds.viz.plot_outliers`).
-- **`ds.features`** — ✅ done (`one_hot_encode`, `ordinal_encode`,
-  `scale_features`, `bin_column`).
-- **`ds.validation`** — ✅ done (`assert_in_range`, `assert_in_set`,
-  `assert_dtypes`, and a `pandera`-backed `check_schema`).
-- **`ds.io`** — support more formats; add a `data/`-aware pair
-  (`load_raw` / `save_processed`) that resolves paths via `ds.config` settings.
+- **`ds.preprocessing`** — `coerce_dtypes`, `flag_outliers` / `clip_outliers`,
+  `drop_duplicate_rows`, `impute_missing`, paired with `ds.viz.plot_outliers`.
+- **`ds.features`** — `one_hot_encode`, `ordinal_encode`, `scale_features`,
+  `bin_column`.
+- **`ds.validation`** — `assert_in_range`, `assert_in_set`, `assert_dtypes`, and
+  a `pandera`-backed `check_schema`.
+- **`ds.io`** — `.tsv`/`.jsonl` formats plus a `data/`-aware `load_raw` /
+  `save_processed` pair resolving paths via `ds.config`.
 
-Pair new stage functions with `ds.viz` plots where it helps (e.g. a
-distribution / outlier plot for `preprocessing`, mirroring how `plot_missingness`
-and `plot_confusion_matrix` visualize `eda` / `evaluation` outputs).
+When adding more, keep pairing stage functions with `ds.viz` plots where it
+helps (as `plot_outliers` visualizes `flag_outliers`, mirroring `plot_missingness`
+and `plot_confusion_matrix`).
 
 ## Later / bigger bets
 

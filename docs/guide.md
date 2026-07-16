@@ -22,14 +22,25 @@ hints and a Google-style docstring.
 
 ### Acquire — `ds.io`
 
-Format is inferred from the file suffix (CSV, Parquet, …), so the same two calls
-handle any supported table.
+Format is inferred from the file suffix (`.csv`, `.tsv`, `.parquet`, `.json`,
+`.jsonl`), so the same two calls handle any supported table.
 
 ```python
 from ds.io import load_table, save_table
 
 df = load_table("data/raw/sales.csv")
 save_table(df, "data/processed/sales.parquet")
+```
+
+For the standard `data/` layout, `load_raw` / `save_processed` resolve names
+against `ds.config` settings (no hard-coded paths, and names can't escape the
+data tree):
+
+```python
+from ds.io import load_raw, save_processed
+
+df = load_raw("sales.csv")            # reads <data_dir>/raw/sales.csv
+save_processed(df, "sales.parquet")   # writes <data_dir>/processed/sales.parquet
 ```
 
 ### Validate — `ds.validation`
