@@ -22,8 +22,8 @@ hints and a Google-style docstring.
 
 ### Acquire — `ds.io`
 
-Format is inferred from the file suffix (CSV, Parquet, …), so the same two calls
-handle any supported table.
+Format is inferred from the file suffix (`.csv`, `.tsv`, `.parquet`, `.json`,
+`.jsonl`), so the same two calls handle any supported table.
 
 ```python
 from ds.io import load_table, save_table
@@ -32,24 +32,65 @@ df = load_table("data/raw/sales.csv")
 save_table(df, "data/processed/sales.parquet")
 ```
 
+For the standard `data/` layout, `load_raw` / `save_processed` resolve names
+against `ds.config` settings (no hard-coded paths, and names can't escape the
+data tree):
+
+```python
+from ds.io import load_raw, save_processed
+
+df = load_raw("sales.csv")            # reads <data_dir>/raw/sales.csv
+save_processed(df, "sales.parquet")   # writes <data_dir>/processed/sales.parquet
+```
+
 ### Validate — `ds.validation`
 
 Fail fast on the assumptions a pipeline depends on.
 
 ```python
-from ds.validation import assert_no_nulls, require_columns
+from ds.validation import (
+    assert_dtypes,
+    assert_in_range,
+    assert_in_set,
+    assert_no_nulls,
+    check_schema,
+    require_columns,
+)
 
-require_columns(df, ["date", "amount"])   # raises if a column is missing
-assert_no_nulls(df, ["amount"])           # raises on nulls in `amount`
+require_columns(df, ["date", "amount"])        # raises if a column is missing
+assert_no_nulls(df, ["amount"])                # raises on nulls in `amount`
+assert_in_range(df, "amount", min_value=0)     # raises on negative amounts
+assert_in_set(df, "status", ["open", "closed"])  # raises on unknown values
+assert_dtypes(df, {"amount": "float64"})       # raises on the wrong dtype
+```
+
+For a whole-frame declarative check, `check_schema` leans on `pandera` and can
+coerce dtypes as it validates:
+
+```python
+df = check_schema(df, {"amount": "float64", "status": "str"}, coerce=True)
 ```
 
 ### Clean — `ds.preprocessing`
 
 ```python
-from ds.preprocessing import drop_constant_columns, standardize_column_names
+from ds.preprocessing import (
+    clip_outliers,
+    coerce_dtypes,
+    drop_constant_columns,
+    drop_duplicate_rows,
+    flag_outliers,
+    impute_missing,
+    standardize_column_names,
+)
 
-df = standardize_column_names(df)   # "Total Sales ($)" -> "total_sales"
-df = drop_constant_columns(df)      # drop columns with a single value
+df = standardize_column_names(df)          # "Total Sales ($)" -> "total_sales"
+df = drop_constant_columns(df)             # drop columns with a single value
+df = drop_duplicate_rows(df)               # de-duplicate rows (optional subset=)
+df = coerce_dtypes(df, {"amount": "float64"})  # pin loader-inferred dtypes
+df = impute_missing(df, strategy="median")     # fill gaps per column
+flags = flag_outliers(df, method="iqr")        # boolean mask of extreme values
+df = clip_outliers(df, method="iqr")           # winsorize instead of dropping
 ```
 
 ### Explore — `ds.eda`
@@ -65,9 +106,19 @@ top_correlations(df, n=5)  # most correlated numeric pairs (redundancy / leakage
 ### Feature — `ds.features`
 
 ```python
-from ds.features import add_datetime_features
+from ds.features import (
+    add_datetime_features,
+    bin_column,
+    one_hot_encode,
+    ordinal_encode,
+    scale_features,
+)
 
-df = add_datetime_features(df, "date")   # year, month, dayofweek, ...
+df = add_datetime_features(df, "date")               # year, month, dayofweek, ...
+df = one_hot_encode(df, ["category"])                # indicator columns
+df = ordinal_encode(df, categories={"size": ["S", "M", "L"]})  # ranked codes
+df = scale_features(df, ["amount"], method="minmax")  # rescale to [0, 1]
+df = bin_column(df, "amount", bins=4, method="quantile")  # -> amount_bin
 ```
 
 ### Model — `ds.modeling`
@@ -114,19 +165,22 @@ per_class_metrics(y_true, y_pred)        # precision/recall/f1/support per class
 from ds.viz import (
     plot_confusion_matrix,
     plot_missingness,
+    plot_outliers,
     plot_residuals,
     set_theme,
 )
 
 set_theme("notebook")                    # consistent matplotlib theme + palette
 plot_missingness(df)                     # bar chart of missing fractions
+plot_outliers(df)                        # bar chart of outlier counts per column
 plot_confusion_matrix(y_true, y_pred)    # annotated heatmap
 plot_residuals(y_true, y_pred)           # residual-vs-predicted diagnostic
 ```
 
 Each plot returns a matplotlib `Axes` and accepts an existing `ax=`, so they
-compose into multi-panel figures. They pair with the `ds.eda` and
-`ds.evaluation` helpers (`plot_missingness` visualizes `missing_value_report`,
+compose into multi-panel figures. They pair with the `ds.eda`,
+`ds.preprocessing` and `ds.evaluation` helpers (`plot_missingness` visualizes
+`missing_value_report`, `plot_outliers` visualizes `flag_outliers`,
 `plot_confusion_matrix` visualizes `confusion_frame`).
 
 ### Cross-cutting
