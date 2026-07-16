@@ -9,8 +9,9 @@ temporal signal is the hour of day.
 
 The pipeline runs the full lifecycle on ``ds`` + scikit-learn alone: fetch →
 validate → explore → clean → chronological split → fit-on-train/apply-to-both →
-persist the scoring pipeline → model → evaluate against a naive baseline →
-visualize. Friction it surfaced in the library is recorded in ``ROADMAP.md``.
+persist the scoring pipeline and the fitted model → score from the reloaded
+model → evaluate against a naive baseline → visualize. Friction it surfaced in
+the library is recorded in ``ROADMAP.md``.
 
 Run it with::
 
@@ -34,9 +35,11 @@ from sklearn.linear_model import LinearRegression
 
 from ds import Settings, get_logger, get_settings, seed_everything
 from ds.eda import missing_value_report, summarize
-from ds.evaluation import regression_metrics
+from ds.evaluation import compare_models, regression_metrics
 from ds.features import add_datetime_features, fit_one_hot_categories, fit_scale_params
 from ds.io import load_raw, save_params, save_processed
+from ds.modeling.baseline import fit_baseline
+from ds.modeling.persistence import load_model, save_model
 from ds.modeling.tabular import split_features_target
 from ds.modeling.timeseries import train_test_split_by_time
 from ds.pipeline import Pipeline, PipelineStep
@@ -48,7 +51,7 @@ from ds.preprocessing import (
     standardize_column_names,
 )
 from ds.validation import assert_no_nulls, check_schema, require_columns
-from ds.viz import plot_missingness, plot_residuals, set_theme
+from ds.viz import plot_missingness, plot_model_comparison, plot_residuals, set_theme
 
 logger = get_logger(__name__)
 
@@ -87,21 +90,20 @@ def fetch_raw(settings: Settings) -> Path:
 def engineer_trip_features(df: pd.DataFrame) -> pd.DataFrame:
     """Add the project-specific features the generic helpers don't cover.
 
-    ``ds.features.add_datetime_features`` expands year/month/day/dayofweek but
-    not hour — and hour of day is the strongest temporal signal in taxi fares
-    (night surcharges, rush hours) — so it is derived here. Trip duration in
-    minutes is likewise a domain feature built from the two timestamps.
+    ``ds.features.add_datetime_features`` covers the calendar features —
+    including ``pickup_hour``, originally hand-rolled here and since promoted
+    into the library (friction item 2). Trip duration in minutes remains a
+    domain feature built from the two timestamps.
 
     Args:
         df: Frame with ``pickup``/``dropoff`` datetime columns.
 
     Returns:
-        A new frame with the calendar features, ``pickup_hour`` and
-        ``duration_min`` added and the raw ``dropoff`` timestamp dropped
-        (it is fully determined by pickup + duration).
+        A new frame with the calendar features and ``duration_min`` added and
+        the raw ``dropoff`` timestamp dropped (it is fully determined by
+        pickup + duration).
     """
     out = add_datetime_features(df, "pickup", drop=False)
-    out["pickup_hour"] = out["pickup"].dt.hour
     out["duration_min"] = (out["dropoff"] - out["pickup"]).dt.total_seconds() / 60.0
     return out.drop(columns=["dropoff"])
 
@@ -187,24 +189,35 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     assert_no_nulls(train)
     assert_no_nulls(test)
 
-    # 7. Persist the processed data and the whole scoring pipeline. The fitted
-    # *model* cannot be persisted with ds yet (no save_model/load_model) — a
-    # gap this project surfaced; see ROADMAP.md.
+    # 7. Persist the processed data and the whole scoring pipeline.
     save_processed(pd.concat([train, test]), "taxis_features.parquet", settings=settings)
-    save_params(scoring, settings.processed_dir / "params" / "taxis_scoring.json")
+    params_dir = settings.processed_dir / "params"
+    save_params(scoring, params_dir / "taxis_scoring.json")
 
-    # 8. Model.
+    # 8. Model — fitted once, persisted next to the scoring pipeline, and the
+    # held-out window scored from the *reloaded* copy, proving a later run
+    # needs only the files on disk (closing this project's friction item 1).
     x_train, y_train = split_features_target(train, _TARGET)
     x_test, y_test = split_features_target(test, _TARGET)
-    model = LinearRegression().fit(x_train, y_train)
+    save_model(LinearRegression().fit(x_train, y_train), params_dir / "taxis_model.joblib")
+    model = load_model(params_dir / "taxis_model.joblib")
     preds = model.predict(x_test)
 
-    # 9. Evaluate — against a naive predict-the-train-mean baseline, built by
-    # hand because ds.modeling has no baseline estimators yet (ROADMAP.md).
+    # 9. Evaluate — side by side with the naive train-mean baseline
+    # (ds.modeling.baseline replaced the hand-rolled version this project
+    # originally needed — friction item 3, since promoted into the library).
+    baseline = fit_baseline(y_train, strategy="mean")
+    comparison = compare_models(
+        y_test.tolist(),
+        {
+            "linear_regression": [float(value) for value in preds],
+            "train_mean_baseline": baseline.predict(len(y_test)),
+        },
+    )
+    comparison.to_csv(output_dir / "model_comparison.csv")
     metrics = regression_metrics(y_test.tolist(), preds.tolist())
-    baseline_preds = [float(y_train.mean())] * len(y_test)
-    baseline = regression_metrics(y_test.tolist(), baseline_preds)
-    metrics.update({f"baseline_{name}": value for name, value in baseline.items()})
+    baseline_scores = regression_metrics(y_test.tolist(), baseline.predict(len(y_test)))
+    metrics.update({f"baseline_{name}": value for name, value in baseline_scores.items()})
     logger.info("Held-out metrics vs baseline: %s", metrics)
 
     # 10. Visualize.
@@ -213,6 +226,11 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     ax2.set_title("Fare model residuals — held-out window")
     fig2.savefig(output_dir / "residuals.png", bbox_inches="tight")
     plt.close(fig2)
+
+    fig3, ax3 = plt.subplots()
+    plot_model_comparison(comparison, metric="mae", ax=ax3)
+    fig3.savefig(output_dir / "model_comparison.png", bbox_inches="tight")
+    plt.close(fig3)
 
     return metrics
 

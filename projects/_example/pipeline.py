@@ -11,10 +11,12 @@ applied to both splits with the ``fit_*`` / ``apply_*`` pairs, so the held-out
 window never leaks into the clip bounds, fill values, category vocabulary or
 scaling parameters. The scoring-time transforms are then assembled into one
 ``ds.pipeline.Pipeline``, saved alongside the processed data with
-``ds.io.save_params`` and reloaded with ``ds.io.load_params`` to score rows
-that did not exist at fit time — the same loop a real project runs when new
-data arrives after training, without re-stringing the ``apply_*`` calls (or
-their order) by hand.
+``ds.io.save_params``, and the fitted model itself is saved with
+``ds.modeling.persistence.save_model`` — so the scoring step reloads *both*
+from disk (``load_params`` + ``load_model``) and scores rows that did not
+exist at fit time with no in-memory carryover. That is the same loop a real
+project runs when new data arrives after training, without re-stringing the
+``apply_*`` calls (or their order) by hand and without refitting.
 
 Run it with::
 
@@ -44,6 +46,7 @@ from ds.features import (
     fit_scale_params,
 )
 from ds.io import load_params, load_raw, save_params, save_processed, save_table
+from ds.modeling.persistence import load_model, save_model
 from ds.modeling.tabular import split_features_target
 from ds.modeling.timeseries import train_test_split_by_time
 from ds.pipeline import Pipeline, PipelineStep
@@ -153,9 +156,10 @@ def run(output_dir: Path) -> dict[str, float]:
         assert_no_nulls(test)
 
         # Calendar features are stateless, so each split expands its own dates
-        # (keep `date` for ordering, drop it before modeling).
-        train = add_datetime_features(train, "date", drop=False)
-        test = add_datetime_features(test, "date", drop=False)
+        # (keep `date` for ordering, drop it before modeling). Daily data has
+        # no intraday signal, so the expanded hour is constantly zero — drop it.
+        train = add_datetime_features(train, "date", drop=False).drop(columns=["date_hour"])
+        test = add_datetime_features(test, "date", drop=False).drop(columns=["date_hour"])
 
         vocabulary = fit_one_hot_categories(train, columns=["region"])
         train = apply_one_hot_encode(train, vocabulary)
@@ -187,16 +191,19 @@ def run(output_dir: Path) -> dict[str, float]:
         save_params(bounds, params_dir / "outlier_bounds.json")  # train-time-only
         save_params(sales_fill, params_dir / "sales_fill.json")  # train-time-only
 
-        # 7. Model.
+        # 7. Model — fitted once, then persisted next to the transform
+        # parameters so a later run scores without refitting.
         x_train, y_train = split_features_target(train.drop(columns=["date"]), "total_sales")
         x_test, y_test = split_features_target(test.drop(columns=["date"]), "total_sales")
         model = LinearRegression().fit(x_train, y_train)
         preds = model.predict(x_test)
+        save_model(model, params_dir / "model.joblib")
 
         # 8. Score fresh rows from the reloaded state — the "later run". One
         # saved file rebuilds the whole ordered transform chain (impute region
-        # -> encode region -> scale calendar features); only the stateless
-        # calendar expansion runs outside it. Rows include a missing region
+        # -> encode region -> scale calendar features) and another rebuilds
+        # the model, so nothing carries over in memory; only the stateless
+        # calendar expansion runs outside them. Rows include a missing region
         # (filled with the train mode) and an unseen region ("central",
         # one-hot encodes as all zeros under the fixed vocabulary).
         fresh = pd.DataFrame(
@@ -207,8 +214,9 @@ def run(output_dir: Path) -> dict[str, float]:
         )
         fresh = add_datetime_features(fresh, "date", drop=False)
         fresh = load_params(params_dir / "scoring_pipeline.json", Pipeline).apply(fresh)
-        fresh_preds = model.predict(fresh[x_train.columns])
-        logger.info("Scored %d fresh rows with reloaded parameters", len(fresh_preds))
+        scorer = load_model(params_dir / "model.joblib")
+        fresh_preds = scorer.predict(fresh[x_train.columns])
+        logger.info("Scored %d fresh rows with reloaded pipeline and model", len(fresh_preds))
 
     # 9. Evaluate.
     metrics = regression_metrics(y_test.tolist(), preds.tolist())

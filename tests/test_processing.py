@@ -322,6 +322,10 @@ def test_add_datetime_features(sample_df: pd.DataFrame) -> None:
     assert out["Date_year"].iloc[0] == 2024
     # 2024-01-06 is a Saturday.
     assert bool(out["Date_is_weekend"].iloc[1]) is True
+    # Date-only data expands to hour 0; intraday data keeps its hour.
+    assert out["Date_hour"].iloc[0] == 0
+    intraday = pd.DataFrame({"t": pd.to_datetime(["2024-01-01 17:45:00"])})
+    assert add_datetime_features(intraday, "t")["t_hour"].iloc[0] == 17
 
 
 def test_add_datetime_features_missing_column(sample_df: pd.DataFrame) -> None:

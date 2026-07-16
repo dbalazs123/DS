@@ -162,7 +162,7 @@ from ds.features import (
     scale_features,
 )
 
-df = add_datetime_features(df, "date")               # year, month, dayofweek, ...
+df = add_datetime_features(df, "date")               # year, month, dayofweek, hour, ...
 df = one_hot_encode(df, ["category"])                # indicator columns
 df = ordinal_encode(df, categories={"size": ["S", "M", "L"]})  # ranked codes
 df = scale_features(df, ["amount"], method="minmax")  # rescale to [0, 1]
@@ -251,6 +251,12 @@ payload against the class you ask for, so a stale, hand-edited or
 wrong-type file fails with a clear error instead of building broken
 parameters.
 
+Pair them with `ds.modeling.persistence.save_model`/`load_model` (see
+[Model](#model-dsmodeling)) and the scoring run reloads *everything* — fitted
+transforms **and** estimator — from disk, with no refitting and no in-memory
+carryover. Both worked projects (`projects/_example`, `projects/nyc_taxis`)
+run exactly that loop.
+
 #### Compose the applies into one pipeline
 
 Once several parameters are fitted, a scoring run shouldn't have to re-string
@@ -307,6 +313,34 @@ train, test = train_test_split_by_time(df, "date", test_size=0.2)
 x_train, y_train = split_features_target(train, "amount")
 ```
 
+Every first metric needs a reference point: fit a naive baseline on the
+training target and score it alongside the model — an r² only means something
+relative to the naive floor:
+
+```python
+from ds.modeling.baseline import fit_baseline
+
+baseline = fit_baseline(y_train, strategy="mean")  # or "naive_last",
+baseline_preds = baseline.predict(len(y_test))     # or "seasonal_naive" with season_length=
+```
+
+Once an estimator is fitted, persist it so a later run (or another process)
+scores without refitting — the model-side counterpart to
+`save_params`/`load_params`:
+
+```python
+from ds.modeling.persistence import load_model, save_model
+
+save_model(model, "artifacts/model.joblib")   # training run
+model = load_model("artifacts/model.joblib")  # scoring run
+preds = model.predict(x_new)
+```
+
+**Trust boundary:** `load_model` unpickles the file (via `joblib`), which can
+execute arbitrary code — only load model files written by you or a process you
+trust. Fitted *transform* parameters don't carry this risk; they persist as
+validated JSON via `save_params`/`load_params`.
+
 Text work lives here too (needs the `nlp` extra for an accurate count, otherwise
 falls back to a whitespace estimate):
 
@@ -332,12 +366,47 @@ confusion_frame(y_true, y_pred)          # labeled confusion matrix (true x pred
 per_class_metrics(y_true, y_pred)        # precision/recall/f1/support per class
 ```
 
+One held-out score can flatter (or slander) a model; cross-validate to see the
+spread. For time-ordered rows use the rolling-origin form — every test window
+is strictly in its training data's future, the repeated-fold counterpart to
+`train_test_split_by_time` (a shuffled k-fold on temporal data trains on the
+future); `cross_validate_kfold` is for order-free data. Both build a fresh
+model per fold via the factory you pass and return one row of metrics per
+fold:
+
+```python
+from sklearn.linear_model import LinearRegression
+
+from ds.evaluation import cross_validate_by_time, cross_validate_kfold
+
+cross_validate_by_time(          # fold i trains on blocks 1..i, tests on i+1
+    df, time_column="date", target="amount", make_model=lambda: LinearRegression()
+)
+cross_validate_kfold(            # plain shuffled k-fold, order-free data only
+    df.drop(columns=["date"]), target="amount", make_model=lambda: LinearRegression()
+)
+```
+
+Both default to `regression_metrics` per fold; pass
+`metrics_fn=classification_metrics` (or your own scorer) for classifiers.
+Finally, score candidates side by side — including the baseline — with
+`compare_models`, whose frame feeds `ds.viz.plot_model_comparison`:
+
+```python
+from ds.evaluation import compare_models
+
+comparison = compare_models(
+    y_test, {"linear": y_pred, "train_mean": baseline_preds}
+)
+```
+
 ### Visualize — `ds.viz`
 
 ```python
 from ds.viz import (
     plot_confusion_matrix,
     plot_missingness,
+    plot_model_comparison,
     plot_outliers,
     plot_residuals,
     set_theme,
@@ -348,13 +417,15 @@ plot_missingness(df)                     # bar chart of missing fractions
 plot_outliers(df)                        # bar chart of outlier counts per column
 plot_confusion_matrix(y_true, y_pred)    # annotated heatmap
 plot_residuals(y_true, y_pred)           # residual-vs-predicted diagnostic
+plot_model_comparison(comparison)        # one metric across models, as bars
 ```
 
 Each plot returns a matplotlib `Axes` and accepts an existing `ax=`, so they
 compose into multi-panel figures. They pair with the `ds.eda`,
 `ds.preprocessing` and `ds.evaluation` helpers (`plot_missingness` visualizes
 `missing_value_report`, `plot_outliers` visualizes `flag_outliers`,
-`plot_confusion_matrix` visualizes `confusion_frame`).
+`plot_confusion_matrix` visualizes `confusion_frame`, and
+`plot_model_comparison` visualizes `compare_models`).
 
 ### Cross-cutting
 

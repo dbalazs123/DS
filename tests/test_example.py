@@ -122,8 +122,10 @@ def test_example_pipeline_cleans_and_encodes_split_safely(tmp_path: Path) -> Non
     assert train.isna().sum().sum() == 0
     assert test.isna().sum().sum() == 0
 
-    train = add_datetime_features(train, "date", drop=False)
-    test = add_datetime_features(test, "date", drop=False)
+    # Daily data: the expanded hour is constantly zero, so drop it as the
+    # example pipeline does.
+    train = add_datetime_features(train, "date", drop=False).drop(columns=["date_hour"])
+    test = add_datetime_features(test, "date", drop=False).drop(columns=["date_hour"])
 
     vocabulary = fit_one_hot_categories(train, columns=["region"])
     train = apply_one_hot_encode(train, vocabulary)
@@ -184,3 +186,17 @@ def test_example_pipeline_cleans_and_encodes_split_safely(tmp_path: Path) -> Non
     region_columns = [c for c in fresh.columns if c.startswith("region_")]
     assert fresh.loc[1, region_columns].sum() == 1  # filled with the train mode
     assert fresh.loc[2, region_columns].sum() == 0  # unseen category -> all zeros
+
+    # The model persists next to the parameters, so the "later run" reloads
+    # both and scores with no in-memory carryover.
+    from sklearn.linear_model import LinearRegression
+
+    from ds.modeling.persistence import load_model, save_model
+    from ds.modeling.tabular import split_features_target
+
+    x_train, y_train = split_features_target(train.drop(columns=["date"]), "total_sales")
+    model = LinearRegression().fit(x_train, y_train)
+    save_model(model, params_dir / "model.joblib")
+    reloaded = load_model(params_dir / "model.joblib")
+    fresh_preds = reloaded.predict(fresh[x_train.columns])
+    assert fresh_preds.tolist() == model.predict(fresh[x_train.columns]).tolist()

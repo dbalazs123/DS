@@ -64,10 +64,19 @@ def test_pipeline_end_to_end(tmp_path: Path) -> None:
     assert metrics["rmse"] < metrics["baseline_rmse"]
     assert metrics["mae"] < metrics["baseline_mae"]
 
-    # Artifacts: EDA reports, figures, processed data, persisted pipeline.
-    for name in ("summary.csv", "missing.csv", "missingness.png", "residuals.png"):
+    # Artifacts: EDA reports, figures, processed data, persisted pipeline
+    # and model.
+    for name in (
+        "summary.csv",
+        "missing.csv",
+        "missingness.png",
+        "residuals.png",
+        "model_comparison.csv",
+        "model_comparison.png",
+    ):
         assert (out / name).exists()
     assert (settings.processed_dir / "taxis_features.parquet").exists()
+    assert (settings.processed_dir / "params" / "taxis_model.joblib").exists()
 
     # The persisted scoring pipeline reloads and reproduces the training-time
     # feature columns on raw-shaped rows.

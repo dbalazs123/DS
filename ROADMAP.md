@@ -16,10 +16,10 @@ working set of the most-reached-for helpers. Built out so far:
 | Validate | `ds.validation` | `require_columns`, `assert_no_nulls`, `assert_in_range`, `assert_in_set`, `assert_dtypes`, `check_schema` |
 | Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns`, `drop_duplicate_rows`, `coerce_dtypes`, `flag_outliers`, `clip_outliers`, `impute_missing` + split-safe pairs `fit_outlier_bounds`/`apply_flag_outliers`/`apply_clip_outliers`, `fit_impute_values`/`apply_impute_missing` |
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
-| Feature | `ds.features` | `add_datetime_features`, `one_hot_encode`, `ordinal_encode`, `scale_features`, `bin_column` + split-safe pairs `fit_one_hot_categories`/`apply_one_hot_encode`, `fit_ordinal_categories`/`apply_ordinal_encode`, `fit_scale_params`/`apply_scale_features` |
-| Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `count_tokens` — **the thinnest stage; see the evaluation below** |
-| Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics` |
-| Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_confusion_matrix`, `plot_residuals` |
+| Feature | `ds.features` | `add_datetime_features` (incl. `_hour`), `one_hot_encode`, `ordinal_encode`, `scale_features`, `bin_column` + split-safe pairs `fit_one_hot_categories`/`apply_one_hot_encode`, `fit_ordinal_categories`/`apply_ordinal_encode`, `fit_scale_params`/`apply_scale_features` |
+| Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `fit_baseline` (mean / naive-last / seasonal-naive), `save_model`/`load_model` (joblib persistence), `count_tokens` |
+| Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics`, `cross_validate_by_time` (rolling origin), `cross_validate_kfold`, `compare_models` |
+| Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_confusion_matrix`, `plot_residuals`, `plot_model_comparison` |
 
 Supporting: `ds.pipeline` (a persistable fit-once/apply-many `Pipeline` over
 the `fit_*`/`apply_*` pairs), `ds` CLI (`ds version`, `ds new`, `ds run`), a
@@ -41,15 +41,19 @@ extending recent momentum. Verdicts, and what they imply:
   supply-side library polish. **Consequence:** every library addition should
   now be pulled by a project need, not pushed from a candidate list. The
   friction backlog below is the current queue.
-- **Fit-once / score-later** — *stopped one step short of its own goal.*
-  Fitted parameters and the `Pipeline` persist as strict JSON, but the fitted
-  **model** cannot be persisted at all, so "score new rows in a later run or
-  another process" breaks at the estimator. This is the top library gap (P2).
-- **Every stage carries working helpers** — *sharply uneven.* Clean/Feature
-  are rich; Model is two split helpers plus `count_tokens` and Evaluate is
-  four point-metric functions — no baselines, no cross-validation (not even
-  rolling-origin, though the flagship example is a forecast), no model
-  comparison. The stages where the science happens are the thinnest (P3).
+- **Fit-once / score-later** — *stopped one step short of its own goal;
+  since closed (P2).* Fitted parameters and the `Pipeline` persist as strict
+  JSON, but at evaluation time the fitted **model** could not be persisted at
+  all, so "score new rows in a later run or another process" broke at the
+  estimator. `ds.modeling.persistence.save_model`/`load_model` closed this;
+  both worked projects now score from reloaded state only.
+- **Every stage carries working helpers** — *was sharply uneven; since
+  rebalanced (P3).* At evaluation time Model was two split helpers plus
+  `count_tokens` and Evaluate four point-metric functions — no baselines, no
+  cross-validation, no model comparison. P3 filled exactly those gaps
+  (`fit_baseline`, rolling-origin + k-fold cross-validation,
+  `compare_models` + its paired plot), each traced to the friction backlog
+  rather than a candidate list.
 - **"Toolkit for every situation"** — *was dishonest at the packaging layer,
   now fixed.* The `timeseries` extra (statsmodels, sktime) had zero importers,
   most of the `nlp` extra was unused, and `polars` sat unused in the core
@@ -74,37 +78,63 @@ orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
   transforms persisted as one scoring `Pipeline`, evaluated against a naive
   baseline (r² 0.73 vs baseline mae 7.2 → 2.6). Its friction list *is* the
   backlog below.
-- **P2 — model persistence (next up).** `ds.modeling` gains
-  `save_model`/`load_model` (joblib under the hood — already present
-  transitively via scikit-learn; document the unpickling trust boundary).
-  Then the worked example and `nyc_taxis` reload **pipeline + model** with no
-  in-memory carryover, and the fit-once/score-later goal is actually met.
-- **P3 — bring Model/Evaluate up to the Clean/Feature standard.** Core deps
-  only, standard recipe: baseline estimators (`fit_baseline`: mean /
-  naive-last / seasonal-naive) so every first metric has a reference point;
-  `cross_validate_by_time` (rolling-origin) plus a plain k-fold wrapper; a
-  small model-comparison frame paired with a `ds.viz` plot. Re-rank against
-  the friction backlog before building.
+- **P2 — model persistence: DONE.** `ds.modeling.persistence` provides
+  `save_model`/`load_model`, joblib under the hood (the format scikit-learn's
+  own docs recommend; now a declared core dependency per the
+  first-consumer rule). Deliberate line, recorded: joblib/pickle is used
+  **only** for the estimator — unpickling executes arbitrary code, so
+  `load_model` documents the trust boundary (only load files you or a trusted
+  process wrote), while transform parameters stay in strict validated JSON.
+  Both worked projects now persist pipeline + model and score from the
+  reloaded state with no in-memory carryover; the guide's Model section
+  documents the pattern and the warning.
+- **P3 — bring Model/Evaluate up to the Clean/Feature standard: DONE.**
+  Re-ranked against the friction backlog first, so the batch opened with the
+  smallest demand-traced win (`add_datetime_features` now emits `_hour` —
+  friction item 2), then, core deps only and to the standard recipe:
+  - `ds.modeling.baseline.fit_baseline` (mean / naive-last / seasonal-naive)
+    returning a frozen `Baseline` with `predict(n)` — deliberately *not* a
+    scikit-learn estimator, because a baseline needs no feature matrix; the
+    training target is the whole input, and the output feeds
+    `ds.evaluation` directly (friction item 3).
+  - `ds.evaluation.cross_validate_by_time` — rolling-origin folds, the
+    repeated-fold counterpart to `train_test_split_by_time` (a shuffled
+    k-fold on temporal data trains on the future) — plus
+    `cross_validate_kfold` for order-free data. Both take a `make_model`
+    factory (fresh estimator per fold, no cross-fold state) and a
+    `metrics_fn` defaulting to `regression_metrics`, so classification (or a
+    custom scorer) composes instead of forking the API.
+  - `ds.evaluation.compare_models` + `ds.viz.plot_model_comparison`,
+    following the settled stage↔viz pairing convention.
+  `nyc_taxis` dogfoods the batch: library `pickup_hour`, `fit_baseline` and
+  a persisted comparison frame/plot replaced its hand-rolled versions, with
+  identical metrics.
 - **P4 — honest packaging: DONE.** Unused pins removed (`polars` from core;
   `sentence-transformers`/`anthropic`/`statsmodels`/`sktime` from extras —
   `nlp` is now exactly `tiktoken`). A dependency is added in the same change
   as its first consumer. Intended future extras (e.g. a statsmodels-backed
   `timeseries`) live here until that code exists.
 
-Deprioritized until a project pulls them: more EDA helpers, more viz, more
-cookbook recipes, more CLI.
+**Next up:** the plan of record is complete (P1–P4 all done), so the demand
+loop decides what's next: either friction item 4 (the high-cardinality
+encoder — the one open item with a real consumer waiting in `nyc_taxis`) or,
+better still, a **second real-data project** to regenerate demand before more
+library work. Deprioritized until a project pulls them: more EDA helpers,
+more viz, more cookbook recipes, more CLI.
 
 ## Friction backlog (from `projects/nyc_taxis`)
 
 Demand-driven candidates, in observed-pain order:
 
-1. **Model persistence** — the scoring `Pipeline` round-trips as JSON but the
-   fitted estimator cannot be saved (= P2).
-2. **`add_datetime_features` has no `hour`** — hour of day was the strongest
-   temporal signal in the data and had to be hand-rolled. Add an `_hour`
-   column (and consider opting parts in/out) — smallest, clearest win.
-3. **No baseline estimators** — the train-mean reference model was
-   hand-rolled (= first slice of P3).
+1. ~~**Model persistence**~~ — **resolved by P2**:
+   `ds.modeling.persistence.save_model`/`load_model`; the project now scores
+   the held-out window from the reloaded model.
+2. ~~**`add_datetime_features` has no `hour`**~~ — **resolved in P3**: the
+   helper now emits `<column>_hour` (constantly zero on date-only data, where
+   `drop_constant_columns` removes it); the project consumes it.
+3. ~~**No baseline estimators**~~ — **resolved in P3**:
+   `ds.modeling.baseline.fit_baseline`; the project's hand-rolled train-mean
+   baseline is gone.
 4. **No high-cardinality strategy** — the ~200-level zone columns can't be
    one-hot or ordinal encoded; the project fell back to boroughs. Candidate:
    a `fit_*/apply_*` frequency or top-k("other") encoder in `ds.features`.
@@ -156,9 +186,10 @@ types under `mypy --strict`, per-class edge-case handling next to each
 definition, shared plumbing in private `ds._serde`, `ds.io` typed against the
 `FittedParams` protocol); strict JSON on disk (tagged non-finite floats, numpy
 scalars unwrapped, tuples re-tupled, `from_dict` validates type tag + exact
-field set). **Revisit recorded:** the cited goal — "score new rows in a later
-run or another process" — is unmet without persisting the *model* too; P2
-extends the story to the estimator.
+field set). **Revisit resolved:** the cited goal — "score new rows in a later
+run or another process" — was unmet without persisting the *model* too; P2
+extended the story to the estimator via `ds.modeling.persistence` (JSON stays
+the format for parameters, joblib is used only for the model).
 
 ### Composable fit/apply pipeline *(stands; one observation logged)*
 

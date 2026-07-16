@@ -38,9 +38,9 @@ tests/         Test suite mirroring src/ds/
 | Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns` |
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
 | Feature | `ds.features` | `add_datetime_features` |
-| Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `count_tokens` |
-| Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics` |
-| Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_confusion_matrix`, `plot_residuals` |
+| Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `fit_baseline`, `save_model`/`load_model`, `count_tokens` |
+| Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `cross_validate_by_time`, `compare_models` |
+| Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_confusion_matrix`, `plot_residuals`, `plot_model_comparison` |
 
 Cross-cutting: `ds.config`, `ds.logging`, `ds.reproducibility`.
 

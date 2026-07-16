@@ -210,9 +210,12 @@ def _decode_categories(value: Any, type_name: str) -> dict[str, tuple[Any, ...]]
 def add_datetime_features(df: pd.DataFrame, column: str, *, drop: bool = False) -> pd.DataFrame:
     """Expand a datetime column into calendar features.
 
-    Adds ``<column>_year``, ``_month``, ``_day``, ``_dayofweek`` and
-    ``_is_weekend`` columns — the workhorse features for most time-series and
-    tabular models with a temporal component.
+    Adds ``<column>_year``, ``_month``, ``_day``, ``_dayofweek``, ``_hour``
+    and ``_is_weekend`` columns — the workhorse features for most time-series
+    and tabular models with a temporal component. Hour of day is included
+    because it carries the dominant signal for intraday data (a lesson from
+    the real-data taxi-fare project); on date-only data it is constantly zero,
+    where :func:`ds.preprocessing.drop_constant_columns` removes it.
 
     Args:
         df: The source DataFrame.
@@ -233,6 +236,7 @@ def add_datetime_features(df: pd.DataFrame, column: str, *, drop: bool = False) 
     out[f"{column}_month"] = ts.dt.month
     out[f"{column}_day"] = ts.dt.day
     out[f"{column}_dayofweek"] = ts.dt.dayofweek
+    out[f"{column}_hour"] = ts.dt.hour
     out[f"{column}_is_weekend"] = ts.dt.dayofweek.isin((5, 6))
     if drop:
         out = out.drop(columns=[column])
