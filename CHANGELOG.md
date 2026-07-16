@@ -35,6 +35,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `src/ds/__init__.py` via Hatch's dynamic version, instead of being duplicated
   in `pyproject.toml`.
 - CLAUDE.md branching guidance no longer hard-codes a (stale) branch name.
+- `projects/_example/pipeline.py` now generates realistically dirty synthetic
+  data (missing values, outliers, a categorical column, duplicate rows) and
+  runs it through `ds.io.load_raw`/`save_processed`, `ds.validation.check_schema`,
+  `ds.preprocessing.coerce_dtypes`/`drop_duplicate_rows`/`clip_outliers`/
+  `impute_missing`, and `ds.features.one_hot_encode`/`scale_features`, so the
+  worked example actually exercises the stage functions fleshed out above
+  instead of data too clean to need them. `docs/guide.md` and the project
+  template's `pipeline.py.jinja` comment now point at `load_raw` instead of
+  `load_table`/`settings.raw_dir`.
 
 ### Fixed
 - `ds.modeling.nlp.count_tokens` now falls back to its whitespace estimate when
