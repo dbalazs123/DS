@@ -51,6 +51,7 @@ Commands a contributor runs:
 ```bash
 uv sync            # create env, install ds + dev tools
 ds new "<name>"    # scaffold a project under projects/ (wraps copier)
+ds run "<name>"    # run projects/<slug>/pipeline.py, resolved by name/slug
 make check         # lint + typecheck + test (what CI runs)
 make lint          # uv run ruff check .
 make format        # uv run ruff format . && ruff check --fix .
@@ -104,6 +105,17 @@ Things that cost a round-trip to discover; save yourself the CI failure:
   `tests/test_public_api.py` pins the exact top-level surface, so widening or
   narrowing it fails CI. The package version is single-sourced in
   `src/ds/__init__.py` via Hatch's dynamic version (`[tool.hatch.version]`).
+- **CLI scope is deliberately narrow (settled).** The `ds` CLI carries
+  `version`, `new`, and `run` — commands that are *project-aware* (they know the
+  `projects/` layout and the `ds new` slug convention) and so add something the
+  raw command doesn't. `ds check` was considered and **rejected**: it would only
+  shell out to the same tools `make check` already orchestrates, and `make` is
+  the canonical dev entry point (README/CLAUDE/CONTRIBUTING all assume it), so a
+  second entry point would either duplicate the sequence (drift risk against the
+  Makefile) or just call `make` (adding nothing). Don't re-add it — see
+  ROADMAP.md for the full rationale. `ds run` resolves a name against existing
+  `projects/` directories rather than building a path from it, keeping the same
+  path-traversal discipline as `ds new`'s slug.
 - **Reuse across stages** rather than duplicating (e.g. `ds.viz` plots call
   `ds.eda` / `ds.evaluation` functions).
 - **Sanitize user-facing input paths.** `ds new`'s slug collapses any

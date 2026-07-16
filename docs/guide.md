@@ -385,9 +385,26 @@ Either way you get a `pipeline.py` skeleton (one section per lifecycle stage), a
 `notebooks/` folder, and a `tests/` folder. Run and test it with:
 
 ```bash
-uv run python projects/customer_churn/pipeline.py
+ds run "Customer Churn"                          # runs projects/customer_churn/pipeline.py
 uv run pytest projects/customer_churn --no-cov
 ```
+
+`ds run <name>` is the project-aware counterpart to `ds new`: it matches the
+name against the directories under `projects/` — literally or by the same slug
+`ds new` derives, so `"Customer Churn"`, `customer_churn` and `customer-churn`
+all find `projects/customer_churn/` — and runs that project's `pipeline.py` with
+the current interpreter. Run it with a name it can't match (or a typo) and it
+lists the runnable projects instead. It never builds a path out of the name, so
+a stray `../` matches nothing rather than escaping `projects/`. The explicit
+form still works if you prefer it:
+
+```bash
+uv run python projects/customer_churn/pipeline.py
+```
+
+`ds run` runs under whatever interpreter invoked it, so run it inside the
+project environment (`uv run ds run "Customer Churn"` if `ds` isn't already on
+your active `PATH`).
 
 If you find yourself copy-pasting a helper between projects, that's the signal it
 belongs back in `src/ds/`.

@@ -7,6 +7,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `ds run <name>`: run a project's `pipeline.py` by name. It resolves the name
+  against the real directories under `projects/`, matching the literal name or
+  the same slug `ds new` derives (`"Customer Churn"`, `customer_churn` and
+  `customer-churn` all reach `projects/customer_churn/`; `_example` is reachable
+  as `example`), then runs that project with the current interpreter and
+  propagates its exit code. A miss lists the runnable projects. Because it
+  selects an existing `projects/` entry rather than building a path from the
+  name, a traversal attempt like `../evil` matches nothing — the same
+  path-traversal discipline as `ds new`'s slug. The decision to add `ds run`
+  (and to *reject* `ds check` as a redundant shell-out to `make check`) is
+  recorded in `ROADMAP.md` and `CLAUDE.md`; `docs/guide.md` and `README.md`
+  document the command.
 - `tests/test_public_api.py` pins the curated top-level `ds` surface
   (`Settings`, `get_settings`, `get_logger`, `seed_everything`, `__version__`),
   asserts stage helpers and `ds.pipeline.Pipeline` are *not* re-exported, and

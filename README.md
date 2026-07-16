@@ -55,9 +55,14 @@ keeps `import ds` cheap and avoids cross-stage name collisions — see
 
 ```bash
 ds new "Customer Churn"     # scaffold projects/customer_churn/ (wraps copier)
+ds run "Customer Churn"     # run projects/customer_churn/pipeline.py by name
 ```
 
-See the [Guide](docs/guide.md) for a per-stage cookbook and the full workflow.
+`ds run` resolves the name against the directories under `projects/` (literal
+name or slug — `"Customer Churn"`, `customer_churn` and `customer-churn` all
+work) and runs that project's `pipeline.py`; run it with no match to see the
+available projects listed. See the [Guide](docs/guide.md) for a per-stage
+cookbook and the full workflow.
 
 ## Optional extras
 

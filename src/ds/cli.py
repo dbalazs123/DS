@@ -2,14 +2,17 @@
 
 A small ``ds`` command wrapping common workspace tasks. It ships with the
 package, so once ``ds`` is installed you can run ``ds --help`` to see what's
-available. The ``new`` subcommand scaffolds a project and therefore only works
-from a checkout of the DS repository (it needs ``templates/`` and Copier).
+available. The ``new`` and ``run`` subcommands are project-aware and therefore
+work from a checkout of the DS repository: ``new`` needs ``templates/`` and
+Copier, and ``run`` resolves projects under ``projects/``.
 """
 
 from __future__ import annotations
 
 import argparse
 import re
+import subprocess
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -72,8 +75,58 @@ def _cmd_new(args: argparse.Namespace) -> int:
         defaults=True,
         quiet=True,
     )
-    print(f"Created {destination}/ — run it with `uv run python {destination}/pipeline.py`")
+    print(f"Created {destination}/ — run it with `ds run {slug}`")
     return 0
+
+
+def _list_projects(projects_dir: Path) -> list[Path]:
+    """Return the runnable project directories (those with a ``pipeline.py``).
+
+    Sorted by directory name for stable, human-friendly listings.
+    """
+    if not projects_dir.is_dir():
+        return []
+    return sorted(
+        (p for p in projects_dir.iterdir() if p.is_dir() and (p / "pipeline.py").is_file()),
+        key=lambda p: p.name,
+    )
+
+
+def _find_project(name: str, projects_dir: Path) -> Path | None:
+    """Resolve ``name`` to an existing project directory, or ``None``.
+
+    The lookup never builds a path from ``name``; it enumerates the real
+    directories under ``projects/`` and selects one whose name matches ``name``
+    either literally or after slugification (so ``"Customer Churn"``,
+    ``customer_churn`` and ``customer-churn`` all resolve to the same project,
+    and ``_example`` is reachable as ``example``). Because only existing
+    entries are ever selected, a traversal attempt like ``../evil`` simply
+    matches nothing — the same slug discipline that keeps ``ds new`` inside
+    ``projects/``.
+    """
+    candidates = {name, _slugify(name)}
+    for project in _list_projects(projects_dir):
+        if project.name in candidates or _slugify(project.name) in candidates:
+            return project
+    return None
+
+
+def _cmd_run(args: argparse.Namespace) -> int:
+    """Run a project's ``pipeline.py`` by name, from the ``projects/`` area."""
+    project = _find_project(args.name, PROJECTS_DIR)
+    if project is None:
+        available = _list_projects(PROJECTS_DIR)
+        if available:
+            names = ", ".join(p.name for p in available)
+            print(f"No project matching '{args.name}'. Available projects: {names}")
+        else:
+            print(f"No project matching '{args.name}'; no runnable projects under {PROJECTS_DIR}/.")
+        return 1
+
+    pipeline = project / "pipeline.py"
+    print(f"Running {pipeline}")
+    completed = subprocess.run([sys.executable, str(pipeline)], check=False)
+    return completed.returncode
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -91,6 +144,14 @@ def build_parser() -> argparse.ArgumentParser:
         "-d", "--description", default=None, help="One-line description of the project."
     )
     new_parser.set_defaults(func=_cmd_new)
+
+    run_parser = subparsers.add_parser(
+        "run", help="Run a project's pipeline.py by name (resolved under projects/)."
+    )
+    run_parser.add_argument(
+        "name", help="Project name or slug; matched against the directories under projects/."
+    )
+    run_parser.set_defaults(func=_cmd_run)
 
     return parser
 

@@ -22,7 +22,7 @@ working set of the most-reached-for helpers. Built out so far:
 | Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_confusion_matrix`, `plot_residuals` |
 
 Supporting: `ds.pipeline` (a persistable fit-once/apply-many `Pipeline` over
-the `fit_*`/`apply_*` pairs), `ds` CLI (`ds version`, `ds new`), a per-stage
+the `fit_*`/`apply_*` pairs), `ds` CLI (`ds version`, `ds new`, `ds run`), a per-stage
 docs Guide, a `test-extras` CI job, single-sourced version, and an extended
 project template.
 
@@ -201,12 +201,46 @@ and `README.md`; the convention note in `CLAUDE.md` is expanded; and
 `tests/test_public_api.py` pins the exact top-level surface (and asserts
 `import ds` stays cheap) so it can't drift.
 
+## Done — the `ds` CLI grows to `run`; `check` rejected
+
+**Decision: add `ds run`, reject `ds check`.** The gate was whether a subcommand
+earns its keep over what already exists — `make check` (lint + typecheck + test)
+and `uv run python projects/<name>/pipeline.py` — by adding real value
+(discoverability, a project-aware default, cross-platform reach) rather than
+just shelling out.
+
+- **`ds run <name>` — added.** It clears the bar as a *project-aware default*:
+  it resolves the name against the real directories under `projects/`, matching
+  either the literal directory name or the same slug `ds new` derives (so
+  `"Customer Churn"`, `customer_churn` and `customer-churn` all reach
+  `projects/customer_churn/`, and `_example` is reachable as `example`), then
+  runs that project's `pipeline.py` with the current interpreter. It adds
+  *discoverability* — a miss lists the runnable projects instead of failing
+  blankly — and is symmetric with `ds new` (new creates the project, run runs
+  it). Crucially it never builds a path out of the name: it selects an existing
+  entry from the `projects/` listing, so a traversal attempt like `../evil`
+  matches nothing rather than escaping the directory — the same slug discipline
+  that keeps `ds new` safe. This is more than a wrapper over the raw
+  `python projects/<name>/pipeline.py`: that form requires knowing the exact
+  layout, offers no fuzzy-name resolution, and lists nothing on a typo.
+- **`ds check` — rejected.** It would be a pure shell-out to the same tools
+  `make check` already orchestrates, and `make` is the project's canonical dev
+  entry point (README, CLAUDE.md and CONTRIBUTING.md all assume it). A second
+  entry point either reimplements the lint→typecheck→test sequence (a drift
+  risk against the Makefile — two sources of truth) or just calls `make` (adding
+  nothing, and still failing on a make-less Windows). Its one plausible unique
+  benefit — cross-platform reach where `make` is absent — doesn't apply to a
+  workflow whose whole documented surface is `uv` + `make`, so it never earns
+  its keep. Recorded in CLAUDE.md's engineering notes so it isn't re-added.
+
+`tests/test_cli.py` covers name resolution (literal/slug/underscored),
+traversal rejection, exit-code propagation, and the not-found listing;
+`docs/guide.md`, `README.md` and `CLAUDE.md` document `ds run`.
+
 ## Later / bigger bets
 
 The remaining open item:
 
-- **`ds` CLI** — grow beyond `new` (e.g. `ds check`, `ds run`) if it earns its
-  keep. This is now the main open thread.
 - **Docs cookbook** — mostly covered now: `docs/guide.md` already walks every
   stage with copy-pasteable recipes, kept in sync with the worked example.
   What's left is smaller — recipes for less-common combinations as they come
