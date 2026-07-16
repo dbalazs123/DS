@@ -32,7 +32,7 @@ def run(output_dir: Path) -> dict[str, float]:
     seed_everything()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Acquire   — load raw inputs (ds.io.load_table) from settings.raw_dir.
+    # 1. Acquire   — load raw inputs (ds.io.load_raw) from settings.raw_dir.
     # 2. Validate  — assert the columns/shape you depend on (ds.validation).
     # 3. Clean     — standardize names, drop constants (ds.preprocessing).
     # 4. Feature   — engineer columns (ds.features).
