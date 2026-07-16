@@ -26,7 +26,8 @@ in the **same** change.
 │   ├── modeling/          # tabular.py timeseries.py nlp.py
 │   ├── evaluation/ viz/ utils/
 │   └── py.typed
-├── projects/              # analyses/experiments (see _example/pipeline.py)
+├── projects/              # analyses/experiments (_example = synthetic teaching
+│                          #   reference; nyc_taxis = real-data fare prediction)
 ├── templates/project/     # copier template for new projects
 ├── notebooks/             # exploratory notebooks
 ├── data/                  # git-ignored: raw/ interim/ processed/
@@ -37,9 +38,11 @@ in the **same** change.
 
 ## Tooling & commands (verified)
 
-- **Packaging / env:** `uv` (build backend: hatchling). Lean core deps; heavy
-  domain stacks live in optional extras `nlp` and `timeseries`. Dev tools are in
-  the `dev` dependency group (installed by `uv sync`).
+- **Packaging / env:** `uv` (build backend: hatchling). Lean core deps; heavier
+  dependencies live in optional extras (currently just `nlp` = tiktoken), and an
+  extra only carries deps that library code actually consumes — add the dep in
+  the same change as its first consumer. Dev tools are in the `dev` dependency
+  group (installed by `uv sync`).
 - **Layout:** `src/ds/` package with `py.typed`; public API re-exported from
   `src/ds/__init__.py`.
 - **Tests:** `pytest` under `tests/`, with coverage on `ds`.
@@ -70,9 +73,12 @@ more detail).
 
 ## Roadmap
 
-Planned work — including the still-thin stages (`preprocessing`, `features`,
-`validation`, `io`) and candidate functions for each — lives in
-[`ROADMAP.md`](ROADMAP.md). Read it before starting new library work.
+[`ROADMAP.md`](ROADMAP.md) carries the plan of record (next up: model
+persistence, then Model/Evaluate build-out), a goal evaluation of the whole
+toolkit, the friction backlog from the real-data `nyc_taxis` project, and the
+settled-decision rationales this file's notes point to. Read it before starting
+new library work — and note its ordering rule: new library work should trace to
+a friction item from a real project, not a brainstormed candidate list.
 
 ## Engineering notes (hard-won gotchas)
 
@@ -90,9 +96,10 @@ Things that cost a round-trip to discover; save yourself the CI failure:
 - **Coverage gate is enforced at 85%** (`--cov-fail-under` in `pyproject.toml`).
   Running a single project's tests needs `uv run pytest projects/<name> --no-cov`,
   since the gate measures the whole `ds` package.
-- **The `test-extras` CI job installs only `tiktoken`** (deliberately avoids the
-  heavy `nlp`/`all` stacks — torch, sktime). If you add code behind another
-  extra, widen that job so the new path is actually exercised.
+- **The `test-extras` CI job installs `--extra all` and re-runs the suite.**
+  Extras only carry deps that code actually consumes (today: `tiktoken`), so the
+  job stays cheap by construction. If you add code behind a new extra, declare
+  the dep in that extra and this job exercises it automatically.
 - **Public-API convention (settled — import by stage):** stage functions are
   imported by stage (`from ds.eda import ...`), and `ds.pipeline.Pipeline` /
   `PipelineStep` likewise from `ds.pipeline`; only the stage-independent

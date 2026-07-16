@@ -1,8 +1,8 @@
 """Text and LLM helpers.
 
-Heavier NLP dependencies (``tiktoken``, ``sentence-transformers``, the Anthropic
-SDK) ship in the ``nlp`` extra: ``uv sync --extra nlp``. Functions here degrade
-gracefully to dependency-free fallbacks so importing the module never fails.
+Heavier NLP dependencies (currently ``tiktoken``) ship in the ``nlp`` extra:
+``uv sync --extra nlp``. Functions here degrade gracefully to dependency-free
+fallbacks so importing the module never fails.
 """
 
 from __future__ import annotations

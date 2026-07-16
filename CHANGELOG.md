@@ -7,6 +7,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `projects/nyc_taxis`: the first project on **real** data — fare prediction
+  over the 6,433-ride March-2019 NYC taxis sample (seaborn `taxis`, mirrored
+  from the NYC TLC trip records; downloaded once into git-ignored
+  `data/raw/`). It runs the full lifecycle on `ds` + scikit-learn alone, with
+  the split-safe transforms persisted as one scoring `Pipeline` and the model
+  evaluated against a naive train-mean baseline, and exists to drive the
+  hybrid workspace's demand loop: the library friction it surfaced (no `hour`
+  from `add_datetime_features`, no high-cardinality encoder, no model
+  persistence, no baseline estimators) is recorded as the friction backlog in
+  `ROADMAP.md`.
 - `docs/guide.md` cookbook gained three cross-stage recipes for combinations
   the per-stage walkthrough didn't cover: validating right after
   `load_raw`/`load_table` with `check_schema` (acquire + validate), using
@@ -93,6 +103,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `nbstripout` pre-commit hook to strip notebook outputs before they reach git.
 
 ### Changed
+- `ROADMAP.md` restructured around a goal evaluation (2026-07): per-goal
+  verdicts, a P1–P4 plan of record (next up: model persistence, then
+  Model/Evaluate build-out), the `nyc_taxis` friction backlog, and the settled
+  decisions kept with their rationale. A "demand first" rule joins the working
+  agreement: new library work traces to real-project friction, not a
+  brainstormed candidate list.
+- The `test-extras` CI job now installs `--extra all` as declared instead of
+  hand-injecting `tiktoken` — cheap by construction now that extras only carry
+  consumed dependencies.
 - **API discoverability settled: DS keeps the strict import-by-stage
   convention** — no flat top-level re-export of stage helpers, and
   `ds.pipeline.Pipeline` stays `from ds.pipeline import Pipeline`. The top-level
@@ -131,6 +150,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   instead of data too clean to need them. `docs/guide.md` and the project
   template's `pipeline.py.jinja` comment now point at `load_raw` instead of
   `load_table`/`settings.raw_dir`.
+
+### Removed
+- Unused dependency pins, so the install surface matches what code consumes:
+  `polars` from the core dependencies, the `timeseries` extra entirely
+  (`statsmodels`, `sktime` had zero importers), and
+  `sentence-transformers`/`anthropic` from the `nlp` extra — which is now
+  exactly `tiktoken`, the one extra dependency existing code exercises. A
+  dependency is (re-)added in the same change as its first consumer; intended
+  future extras live in `ROADMAP.md` until then.
 
 ### Fixed
 - `ds.modeling.nlp.count_tokens` now falls back to its whitespace estimate when

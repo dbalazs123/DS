@@ -54,12 +54,10 @@ jobs:
         run: uv run pytest
 
   # The default `test` job installs only the lean core, so extra-backed code
-  # paths never run. This job adds just tiktoken — the one optional dependency
-  # exercised by existing code (ds.modeling.nlp.count_tokens) — so its accurate
-  # path runs, not only the fallback. We deliberately avoid the full `nlp`/`all`
-  # extras: they pull heavyweight stacks (sentence-transformers -> torch, sktime)
-  # that no code touches yet, and extra *resolution* is already guaranteed by
-  # uv.lock. Widen this as heavier extra-backed code lands.
+  # paths never run. Extras now carry only dependencies existing code consumes
+  # (the `nlp` extra is exactly tiktoken, exercised by
+  # ds.modeling.nlp.count_tokens), so this job installs the extra as declared
+  # and runs the suite against it. Widen this as new extra-backed code lands.
   test-extras:
     runs-on: ubuntu-latest
     steps:
@@ -70,8 +68,8 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Install dependencies
-        run: uv sync
+      - name: Install dependencies (with extras)
+        run: uv sync --extra all
 
-      - name: Test with tiktoken available
-        run: uv run --with tiktoken pytest
+      - name: Test with the extras available
+        run: uv run pytest

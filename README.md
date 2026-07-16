@@ -66,11 +66,12 @@ cookbook and the full workflow.
 
 ## Optional extras
 
-The core install is lean; domain-heavy stacks live behind extras:
+The core install is lean; heavier dependencies live behind extras, and an extra
+only carries dependencies that library code actually uses (planned directions,
+like a `timeseries` extra, live in [ROADMAP.md](ROADMAP.md) until code lands):
 
 ```bash
-uv sync --extra nlp          # tiktoken, sentence-transformers, anthropic
-uv sync --extra timeseries   # statsmodels, sktime
+uv sync --extra nlp          # tiktoken (accurate token counting)
 uv sync --extra all          # everything
 ```
 
