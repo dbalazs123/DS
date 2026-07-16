@@ -63,6 +63,43 @@ a mirroring test, and export it from the module's `__all__`. Heavy dependencies
 go in the right extra and must degrade gracefully when absent (see
 `src/ds/modeling/nlp.py`).
 
+## Roadmap
+
+Planned work — including the still-thin stages (`preprocessing`, `features`,
+`validation`, `io`) and candidate functions for each — lives in
+[`ROADMAP.md`](ROADMAP.md). Read it before starting new library work.
+
+## Engineering notes (hard-won gotchas)
+
+Things that cost a round-trip to discover; save yourself the CI failure:
+
+- **Run `make format` before committing, not just `make lint`.** CI's `lint`
+  job runs the full pre-commit suite, which includes `ruff-format`. `ruff check`
+  passing does **not** mean the formatter is satisfied — e.g. a two-line
+  function signature ruff wants collapsed will fail the lint job.
+- **`mypy --strict` + pandas-stubs quirks:** `DataFrame.corr(method=...)` wants a
+  `Literal["pearson","kendall","spearman"]`, not `str`; and `df.loc[a, b]`
+  returns a broad scalar union that `float()` rejects — index positionally via
+  `.to_numpy()` instead. matplotlib is type-checked (`py.typed`), so annotate
+  plot helpers `-> Axes` and resolve the optional `ax` explicitly.
+- **Coverage gate is enforced at 85%** (`--cov-fail-under` in `pyproject.toml`).
+  Running a single project's tests needs `uv run pytest projects/<name> --no-cov`,
+  since the gate measures the whole `ds` package.
+- **The `test-extras` CI job installs only `tiktoken`** (deliberately avoids the
+  heavy `nlp`/`all` stacks — torch, sktime). If you add code behind another
+  extra, widen that job so the new path is actually exercised.
+- **Public-API convention:** stage functions are imported by stage
+  (`from ds.eda import ...`); only cross-cutting helpers are re-exported from
+  `src/ds/__init__.py`. The package version is single-sourced there via Hatch's
+  dynamic version (`[tool.hatch.version]`).
+- **Reuse across stages** rather than duplicating (e.g. `ds.viz` plots call
+  `ds.eda` / `ds.evaluation` functions).
+- **Sanitize user-facing input paths.** `ds new`'s slug collapses any
+  non-`[a-z0-9]` run to `_` precisely so a name like `../x` can't escape
+  `projects/` — keep that discipline for anything that builds a filesystem path.
+- **Stacked PRs merge with merge-commits, not squash**, to keep the stack
+  conflict-free (squash/rebase rewrites SHAs the child branches don't recognize).
+
 ## Development workflow
 
 ### Branching

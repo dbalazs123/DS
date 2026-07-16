@@ -7,6 +7,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `ROADMAP.md` and an "Engineering notes" section in `CLAUDE.md` capturing the
+  planned stage build-out and hard-won tooling gotchas.
 - `ds.eda`: `missing_value_report` (columns with gaps, ranked) and
   `top_correlations` (most-correlated numeric pairs, for redundancy/leakage
   screening).
