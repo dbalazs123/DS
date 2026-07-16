@@ -14,9 +14,9 @@ working set of the most-reached-for helpers. Built out so far:
 |-------|--------|--------|
 | Acquire | `ds.io` | `load_table`, `save_table` (csv/tsv/parquet/json/jsonl), `load_raw`, `save_processed` |
 | Validate | `ds.validation` | `require_columns`, `assert_no_nulls`, `assert_in_range`, `assert_in_set`, `assert_dtypes`, `check_schema` |
-| Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns`, `drop_duplicate_rows`, `coerce_dtypes`, `flag_outliers`, `clip_outliers`, `impute_missing` |
+| Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns`, `drop_duplicate_rows`, `coerce_dtypes`, `flag_outliers`, `clip_outliers`, `impute_missing` + split-safe pairs `fit_outlier_bounds`/`apply_flag_outliers`/`apply_clip_outliers`, `fit_impute_values`/`apply_impute_missing` |
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
-| Feature | `ds.features` | `add_datetime_features`, `one_hot_encode`, `ordinal_encode`, `scale_features`, `bin_column` |
+| Feature | `ds.features` | `add_datetime_features`, `one_hot_encode`, `ordinal_encode`, `scale_features`, `bin_column` + split-safe pairs `fit_one_hot_categories`/`apply_one_hot_encode`, `fit_ordinal_categories`/`apply_ordinal_encode`, `fit_scale_params`/`apply_scale_features` |
 | Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `count_tokens` |
 | Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics` |
 | Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_confusion_matrix`, `plot_residuals` |
@@ -50,13 +50,43 @@ and `plot_confusion_matrix`).
 (missing values, outliers, a genuine categorical column, duplicate rows) and
 runs it through the full lifecycle: `load_raw`/`save_processed` (acquire),
 `check_schema`/`require_columns` (validate), `coerce_dtypes`,
-`drop_duplicate_rows`, `clip_outliers`, `impute_missing` alongside the existing
-`standardize_column_names`/`drop_constant_columns` (clean), `one_hot_encode` +
-`scale_features` alongside `add_datetime_features` (feature), then the
-existing split → model → evaluate → visualize flow, now with
+`drop_duplicate_rows` alongside the existing
+`standardize_column_names`/`drop_constant_columns` (structural clean), a
+chronological split, then split-safe clip → impute → encode → scale via the
+`fit_*`/`apply_*` pairs (fitted on train, applied to both — see the fit/apply
+section below), and the existing model → evaluate → visualize flow, with
 `ds.viz.plot_outliers` alongside the forecast figure. `tests/test_example.py`
-asserts the new-stage behavior (no nulls after cleaning, encoded columns
-present, outliers clipped) rather than just the metric keys.
+asserts the new-stage behavior (no nulls after cleaning, identical encoded
+columns on both splits, outliers clipped to train-fitted bounds) rather than
+just the metric keys.
+
+## Done — fit/apply (split-safe) transforms
+
+The five statistic-learning transforms (`impute_missing`, `scale_features`,
+`clip_outliers`/`flag_outliers`, `one_hot_encode`, `ordinal_encode`) now each
+have a paired `fit_*`/`apply_*` form: `fit_*` learns the parameters from one
+frame and returns them as a small frozen dataclass, `apply_*` takes them and
+transforms any frame. The single-call forms remain as convenience wrappers
+(`fit` + `apply` on the same frame) for exploratory/pre-split use, and are
+implemented as exactly that, so the two forms can't drift.
+
+- `ds.preprocessing`: `fit_outlier_bounds` → `OutlierBounds` →
+  `apply_clip_outliers`/`apply_flag_outliers` (one fit serves both, since they
+  share bounds); `fit_impute_values` → `ImputeValues` → `apply_impute_missing`.
+- `ds.features`: `fit_scale_params` → `ScaleParams` → `apply_scale_features`;
+  `fit_one_hot_categories` → `OneHotCategories` → `apply_one_hot_encode`;
+  `fit_ordinal_categories` → `OrdinalCategories` → `apply_ordinal_encode`.
+- The dogfooding friction that motivated this is resolved: the category
+  vocabulary is fixed once at fit time, so train and test always encode to the
+  same column set (unseen categories → all-zero indicators / `-1` codes), and
+  learned fills/bounds/centre+spread can be captured, inspected and reused on
+  new rows.
+- `projects/_example/pipeline.py` now splits chronologically *first* and runs
+  every statistic-learning transform as fit-on-train/apply-to-both, closing the
+  leakage the previous example knowingly demonstrated; `tests/test_example.py`
+  asserts the split-safe behavior (train-fitted bounds/fills applied to test,
+  identical column sets on both splits) and `docs/guide.md` documents the
+  pattern in a dedicated cookbook section.
 
 ## Later / bigger bets
 
@@ -69,35 +99,13 @@ present, outliers clipped) rather than just the metric keys.
   up — rather than a first pass.
 - **`ds` CLI** — grow beyond `new` (e.g. `ds check`, `ds run`) if it earns its
   keep.
-- **Fit/apply (split-safe) transforms — agreed next step.** `impute_missing`,
-  `scale_features`, `clip_outliers`, `one_hot_encode` and `ordinal_encode` all
-  fit their statistics (means, bounds, categories) on whichever frame they're
-  given, so a pipeline can only apply them *before* the train/test split —
-  applying them split-safely (fit on train, transform test with train's
-  statistics) isn't possible today. Rebuilding the worked example surfaced the
-  real friction this causes, to inform that design:
-  - Every one of these five functions had to run pre-split in the example, so
-    the test window's imputation median, scaling mean/std, clip bounds and
-    one-hot categories are all leaked from the future. Harmless for a demo,
-    disqualifying for a real evaluation.
-  - `one_hot_encode`/`ordinal_encode` infer categories from whatever data they
-    see; a category present only in train (or only in test) silently produces
-    a different column set on each side today — a fit/apply split would need
-    to fix the category vocabulary once, from train, and apply it to both.
-  - `impute_missing`'s per-column fill values (mean/median/mode) and
-    `scale_features`'s per-column center/spread are computed and discarded
-    inline — there's no way to capture and reuse them, so a caller who wants
-    train-only statistics has to reimplement the strategy by hand outside the
-    helper today.
-  - `clip_outliers`/`flag_outliers` recompute IQR/z-score bounds from
-    whatever frame they're given; bounds learned on train can't currently be
-    carried over and applied to test data or to new incoming rows.
-  - Shape: each function likely wants a paired `fit_*`/`apply_*` (or a small
-    stateful transformer object) that returns learned parameters from `fit`
-    and takes them as input to `apply`, while the existing single-call form
-    stays as a convenience wrapper (`fit` + `apply` on the same frame) for
-    exploratory/pre-split use — matching how the worked example uses them
-    today.
+- **Persistable fit parameters — natural follow-on.** The `fit_*` dataclasses
+  live only in memory today; scoring new data in a later run (or another
+  process) needs them serialized. A small `to_dict`/`from_dict` (or JSON
+  round-trip via `ds.io`) on each parameter dataclass would let a pipeline
+  save its fitted state alongside the model. Worth designing together with
+  a decision on whether the pairs should also compose into a single
+  fit-once/apply-many "pipeline" object once more than one project needs it.
 
 ## Working agreement
 

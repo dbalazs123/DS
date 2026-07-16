@@ -8,16 +8,27 @@ import pytest
 from ds.eda import missing_value_report, summarize, top_correlations
 from ds.features import (
     add_datetime_features,
+    apply_one_hot_encode,
+    apply_ordinal_encode,
+    apply_scale_features,
     bin_column,
+    fit_one_hot_categories,
+    fit_ordinal_categories,
+    fit_scale_params,
     one_hot_encode,
     ordinal_encode,
     scale_features,
 )
 from ds.preprocessing import (
+    apply_clip_outliers,
+    apply_flag_outliers,
+    apply_impute_missing,
     clip_outliers,
     coerce_dtypes,
     drop_constant_columns,
     drop_duplicate_rows,
+    fit_impute_values,
+    fit_outlier_bounds,
     flag_outliers,
     impute_missing,
     standardize_column_names,
@@ -183,6 +194,57 @@ def test_clip_outliers_winsorizes_without_dropping_rows() -> None:
     assert out["x"].max() < 100  # the extreme value was pulled in
 
 
+def test_fit_outlier_bounds_carries_train_bounds_to_new_data() -> None:
+    train = pd.DataFrame({"x": [1.0, 2.0, 3.0, 4.0, 5.0]})
+    bounds = fit_outlier_bounds(train, ["x"])
+    # 50 is unremarkable within the test frame alone, but far outside the
+    # train-fitted fence — split-safe application must still catch it.
+    test = pd.DataFrame({"x": [50.0, 50.0, 50.0, 3.0, None]})
+    flags = apply_flag_outliers(test, bounds)
+    assert flags["x"].tolist() == [True, True, True, False, False]
+    clipped = apply_clip_outliers(test, bounds)
+    assert clipped["x"].max() == pytest.approx(bounds.bounds["x"][1])
+    assert pd.isna(clipped["x"].iloc[4])  # missing values pass through
+
+
+def test_apply_outlier_bounds_missing_column_raises() -> None:
+    bounds = fit_outlier_bounds(pd.DataFrame({"x": [1.0, 2.0, 3.0]}))
+    with pytest.raises(KeyError):
+        apply_clip_outliers(pd.DataFrame({"y": [1.0]}), bounds)
+    with pytest.raises(KeyError):
+        apply_flag_outliers(pd.DataFrame({"y": [1.0]}), bounds)
+
+
+def test_outlier_wrappers_match_fit_apply() -> None:
+    df = pd.DataFrame({"x": [1, 2, 3, 4, 5, 100]})
+    bounds = fit_outlier_bounds(df)
+    assert clip_outliers(df).equals(apply_clip_outliers(df, bounds))
+    assert flag_outliers(df).equals(apply_flag_outliers(df, bounds))
+
+
+def test_fit_impute_values_uses_train_statistics_on_test() -> None:
+    train = pd.DataFrame({"x": [1.0, 2.0, 3.0]})
+    values = fit_impute_values(train, ["x"], strategy="median")
+    test = pd.DataFrame({"x": [100.0, None]})
+    out = apply_impute_missing(test, values)
+    # The gap is filled with train's median (2.0), not test's own values.
+    assert out["x"].iloc[1] == pytest.approx(2.0)
+
+
+def test_fit_impute_values_most_frequent_and_constant() -> None:
+    train = pd.DataFrame({"c": ["a", "a", "b"]})
+    values = fit_impute_values(train, strategy="most_frequent")
+    assert apply_impute_missing(pd.DataFrame({"c": ["b", None]}), values)["c"].iloc[1] == "a"
+    constant = fit_impute_values(train, ["c"], strategy="constant", fill_value="?")
+    assert apply_impute_missing(pd.DataFrame({"c": [None]}), constant)["c"].iloc[0] == "?"
+
+
+def test_apply_impute_missing_unknown_column_raises() -> None:
+    values = fit_impute_values(pd.DataFrame({"x": [1.0]}))
+    with pytest.raises(KeyError):
+        apply_impute_missing(pd.DataFrame({"y": [1.0]}), values)
+
+
 def test_impute_missing_mean_fills_numeric_only() -> None:
     df = pd.DataFrame({"x": [1.0, None, 3.0], "c": ["a", None, "a"]})
     out = impute_missing(df)  # default mean, numeric columns only
@@ -284,6 +346,74 @@ def test_ordinal_encode_defaults_to_sorted_order() -> None:
     df = pd.DataFrame({"c": ["b", "a", "b"]})
     out = ordinal_encode(df)
     assert out["c"].tolist() == [1, 0, 1]
+
+
+def test_fit_one_hot_categories_fixes_vocabulary_across_splits() -> None:
+    train = pd.DataFrame({"c": ["a", "b", "c"]})
+    vocabulary = fit_one_hot_categories(train, ["c"])
+    # Test lacks "b" entirely and brings the unseen "z".
+    test = pd.DataFrame({"c": ["a", "z"]})
+    enc_train = apply_one_hot_encode(train, vocabulary)
+    enc_test = apply_one_hot_encode(test, vocabulary)
+    assert list(enc_train.columns) == list(enc_test.columns) == ["c_a", "c_b", "c_c"]
+    # The unseen category encodes as all zeros rather than a new column.
+    assert enc_test.iloc[1].tolist() == [False, False, False]
+
+
+def test_apply_one_hot_encode_dummy_na_and_missing_column() -> None:
+    train = pd.DataFrame({"c": ["a", None]})
+    vocabulary = fit_one_hot_categories(train, ["c"], dummy_na=True)
+    out = apply_one_hot_encode(pd.DataFrame({"c": [None, "a"]}), vocabulary)
+    assert bool(out["c_nan"].iloc[0]) is True
+    with pytest.raises(KeyError):
+        apply_one_hot_encode(pd.DataFrame({"other": [1]}), vocabulary)
+
+
+def test_one_hot_wrapper_matches_fit_apply_incl_category_dtype() -> None:
+    df = pd.DataFrame({"c": pd.Categorical(["a", "b"], categories=["b", "a", "unused"])})
+    vocabulary = fit_one_hot_categories(df, ["c"])
+    # Declared categories (order and unused levels) are respected, matching
+    # what pandas.get_dummies does for the single-call form.
+    assert vocabulary.categories["c"] == ("b", "a", "unused")
+    assert one_hot_encode(df, ["c"]).equals(apply_one_hot_encode(df, vocabulary))
+
+
+def test_fit_ordinal_categories_unseen_encodes_minus_one() -> None:
+    train = pd.DataFrame({"size": ["M", "S", "L"]})
+    order = fit_ordinal_categories(train, categories={"size": ["S", "M", "L"]})
+    out = apply_ordinal_encode(pd.DataFrame({"size": ["L", "XL", None]}), order)
+    assert out["size"].tolist() == [2, -1, -1]
+    with pytest.raises(KeyError):
+        apply_ordinal_encode(pd.DataFrame({"other": ["x"]}), order)
+
+
+def test_ordinal_wrapper_matches_fit_apply() -> None:
+    df = pd.DataFrame({"c": ["b", "a", "b"]})
+    assert ordinal_encode(df).equals(apply_ordinal_encode(df, fit_ordinal_categories(df)))
+
+
+def test_fit_scale_params_scales_test_with_train_statistics() -> None:
+    train = pd.DataFrame({"x": [0.0, 10.0]})
+    params = fit_scale_params(train, ["x"], method="minmax")
+    out = apply_scale_features(pd.DataFrame({"x": [5.0, 20.0]}), params)
+    # Test values scale against train's range: beyond it maps past 1 honestly.
+    assert out["x"].tolist() == [0.5, 2.0]
+
+
+def test_apply_scale_features_constant_fit_column_and_missing_column() -> None:
+    params = fit_scale_params(pd.DataFrame({"k": [5.0, 5.0]}), ["k"])
+    out = apply_scale_features(pd.DataFrame({"k": [7.0, 9.0]}), params)
+    assert out["k"].tolist() == [0.0, 0.0]  # constant at fit time -> zeros
+    with pytest.raises(KeyError):
+        apply_scale_features(pd.DataFrame({"other": [1.0]}), params)
+
+
+def test_scale_wrapper_matches_fit_apply() -> None:
+    df = pd.DataFrame({"x": [1.0, 2.0, 3.0]})
+    standard = fit_scale_params(df, method="standard")
+    assert scale_features(df, method="standard").equals(apply_scale_features(df, standard))
+    minmax = fit_scale_params(df, method="minmax")
+    assert scale_features(df, method="minmax").equals(apply_scale_features(df, minmax))
 
 
 def test_scale_features_standard_zero_mean() -> None:

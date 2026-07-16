@@ -95,6 +95,11 @@ flags = flag_outliers(df, method="iqr")        # boolean mask of extreme values
 df = clip_outliers(df, method="iqr")           # winsorize instead of dropping
 ```
 
+`impute_missing`, `flag_outliers` and `clip_outliers` learn their statistics
+from the frame they're given — fine for exploration, but leaky across a
+train/test split. For split-safe cleaning see
+[Fit on train, apply to test](#fit-on-train-apply-to-test-split-safe-transforms).
+
 ### Explore — `ds.eda`
 
 ```python
@@ -122,6 +127,62 @@ df = ordinal_encode(df, categories={"size": ["S", "M", "L"]})  # ranked codes
 df = scale_features(df, ["amount"], method="minmax")  # rescale to [0, 1]
 df = bin_column(df, "amount", bins=4, method="quantile")  # -> amount_bin
 ```
+
+The encoders and scaler learn their vocabulary/parameters from the frame
+they're given; for a train/test workflow use their `fit_*`/`apply_*` pairs —
+see [Fit on train, apply to test](#fit-on-train-apply-to-test-split-safe-transforms).
+
+### Fit on train, apply to test — split-safe transforms
+
+Every statistic-learning transform has a `fit_*`/`apply_*` pair: `fit_*` learns
+the parameters from one frame (means/medians, clip bounds, scale
+centre/spread, category vocabulary) and returns them as a small frozen
+dataclass; `apply_*` applies them to any frame. Fit on the training split and
+apply to both, so the test window (or new incoming rows) never leaks into the
+statistics — and both splits get identical encoded columns even when a
+category is missing from one side:
+
+```python
+from ds.features import (
+    apply_one_hot_encode,
+    apply_scale_features,
+    fit_one_hot_categories,
+    fit_scale_params,
+)
+from ds.modeling.timeseries import train_test_split_by_time
+from ds.preprocessing import (
+    apply_clip_outliers,
+    apply_impute_missing,
+    fit_impute_values,
+    fit_outlier_bounds,
+)
+
+train, test = train_test_split_by_time(df, "date")   # split FIRST
+
+bounds = fit_outlier_bounds(train, ["amount"])       # train-only clip bounds
+train = apply_clip_outliers(train, bounds)
+test = apply_clip_outliers(test, bounds)
+
+fills = fit_impute_values(train, ["amount"], strategy="median")
+train = apply_impute_missing(train, fills)
+test = apply_impute_missing(test, fills)             # filled with TRAIN's median
+
+vocab = fit_one_hot_categories(train, ["category"])  # one vocabulary for both
+train = apply_one_hot_encode(train, vocab)
+test = apply_one_hot_encode(test, vocab)             # same columns, always
+
+scaling = fit_scale_params(train, ["amount"])
+train = apply_scale_features(train, scaling)
+test = apply_scale_features(test, scaling)           # train's centre/spread
+```
+
+`apply_flag_outliers` and `apply_ordinal_encode` (paired with
+`fit_ordinal_categories`) follow the same pattern. Unseen categories one-hot
+encode as all zeros and ordinal-encode as `-1`; the single-call forms
+(`impute_missing`, `clip_outliers`, `scale_features`, ...) remain as
+fit-and-apply-on-the-same-frame conveniences for exploratory, pre-split work.
+The worked example (`projects/_example/pipeline.py`) runs this exact pattern
+end to end.
 
 ### Model — `ds.modeling`
 
