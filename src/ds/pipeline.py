@@ -21,7 +21,7 @@ the steps before it), and returns the assembled :class:`Pipeline`. The
 convenience over the same ``fit_*``/``apply_*`` primitives, not a new fitting
 contract.
 
-Three design points worth knowing:
+Four design points worth knowing:
 
 - **A step records its apply form, not just its parameters.** Each step
   carries a ``kind`` naming the ``apply_*`` transform it means; this is what
@@ -38,6 +38,19 @@ Three design points worth knowing:
   (typically a lambda closing over ``columns=``, ``strategy=``, ``k=``, …),
   so the varying ``fit_*`` signatures need no declarative mirror and the plan
   is not persistable — persist the *fitted* :class:`Pipeline` it produces.
+- **Model-side transforms live in the estimator, not the pipeline.** Every
+  step kind maps named DataFrame columns to named DataFrame columns; a
+  transform whose fitted state *manufactures* its column space — a text
+  vectorizer turning one string column into thousands of learned sparse
+  columns — has no honest home in that contract (materializing the sparse
+  matrix as a dense frame would hide the real cost, and wrapping the
+  scikit-learn object whole would smuggle a pickle into the strict-JSON
+  ``save_params`` story). Keep such transforms inside the estimator (e.g. a
+  ``TfidfVectorizer`` in a scikit-learn pipeline, as ``projects/sms_spam``
+  does) and persist them with :func:`ds.modeling.persistence.save_model`;
+  the ds pipeline carries the frame-shaped steps around it. The convention
+  is the settled resolution of backlog item 18 for now — a second text
+  project decides whether a first-class vectorize step earns a build.
 """
 
 from __future__ import annotations

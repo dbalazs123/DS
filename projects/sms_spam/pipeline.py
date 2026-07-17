@@ -45,7 +45,6 @@ from __future__ import annotations
 
 import csv
 import urllib.request
-from collections.abc import Callable
 from pathlib import Path
 
 import matplotlib
@@ -147,41 +146,19 @@ def load_messages(settings: Settings) -> pd.DataFrame:
     )
 
 
-def _resolve_token_counter() -> Callable[[str], int]:
-    """Probe once whether ``count_tokens``' accurate path is live.
-
-    ``count_tokens`` degrades gracefully — but *per call*: with tiktoken
-    installed and its vocabulary endpoint unreachable, every call re-attempts
-    the download before falling back (~0.4 s observed), which would turn the
-    5,000-message feature map below into a half-hour stall. The caller cannot
-    tell from a returned count which path produced it, so the guard has to
-    reproduce the library's own probe: try the encoding once, and on any
-    failure use the same documented whitespace fallback wholesale. Recorded
-    as backlog friction in ``ROADMAP.md``.
-
-    Returns:
-        ``count_tokens`` when the accurate path works, else the whitespace
-        fallback.
-    """
-    try:
-        import tiktoken
-
-        tiktoken.get_encoding("cl100k_base")  # count_tokens' default encoding
-    except Exception:
-        return lambda text: len(text.split())
-    return count_tokens
-
-
 def add_text_features(df: pd.DataFrame) -> pd.DataFrame:
     """Add per-message length features: ``char_count`` and ``token_count``.
 
     Both are hand-rolled here because the features stage has no text helpers.
     ``char_count`` (message length in characters) is deterministic everywhere
     and may feed the model. ``token_count`` comes from
-    :func:`ds.modeling.nlp.count_tokens` (probed once — see
-    :func:`_resolve_token_counter`), whose value depends on whether tiktoken
-    and its vocabulary are available — it is kept descriptive-only (see the
-    module docstring) so the model never sees it.
+    :func:`ds.modeling.nlp.count_tokens`, whose value depends on whether
+    tiktoken and its vocabulary are available — it is kept descriptive-only
+    (see the module docstring) so the model never sees it. The library
+    resolves which counting path is live once per process (backlog item 19,
+    served in P11), so mapping ~5,000 messages costs at most one failed
+    vocabulary probe — the hand-rolled guard this project used to carry is
+    gone.
 
     Args:
         df: Frame with a string ``message`` column.
@@ -191,8 +168,7 @@ def add_text_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     out = df.copy()
     out["char_count"] = out["message"].str.len().astype(int)
-    counter = _resolve_token_counter()
-    out["token_count"] = [counter(message) for message in out["message"]]
+    out["token_count"] = [count_tokens(message) for message in out["message"]]
     return out
 
 
