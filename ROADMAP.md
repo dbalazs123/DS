@@ -18,7 +18,7 @@ working set of the most-reached-for helpers. Built out so far:
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
 | Feature | `ds.features` | `add_datetime_features` (incl. `_hour`), `one_hot_encode`, `ordinal_encode`, `collapse_categories` (top-k + "other"), `scale_features`, `bin_column` + split-safe pairs `fit_one_hot_categories`/`apply_one_hot_encode`, `fit_ordinal_categories`/`apply_ordinal_encode`, `fit_topk_categories`/`apply_collapse_categories`, `fit_scale_params`/`apply_scale_features` |
 | Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `train_test_split_random` (shuffled, optionally stratified), `fit_baseline` (mean / majority / naive-last / seasonal-naive), `save_model`/`load_model` (joblib persistence), `count_tokens` |
-| Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics`, `cross_validate_by_time` (rolling origin), `cross_validate_kfold`, `compare_models` |
+| Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics`, `cross_validate_by_time` (rolling origin), `cross_validate_kfold` (optionally stratified), `compare_models` |
 | Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_confusion_matrix`, `plot_residuals`, `plot_model_comparison` |
 
 Supporting: `ds.pipeline` (a persistable fit-once/apply-many `Pipeline` over
@@ -40,8 +40,8 @@ extending recent momentum. Verdicts, and what they imply:
   library work") had never run, while eight consecutive PRs invested in
   supply-side library polish. **Consequence:** every library addition should
   now be pulled by a project need, not pushed from a candidate list. The
-  friction backlogs below are the queue (currently the `titanic` one — the
-  `nyc_taxis` list is fully served).
+  friction backlogs below are the queue (currently `titanic` item 9 — its
+  items 6–8 and the whole `nyc_taxis` list are served).
 - **Fit-once / score-later** — *stopped one step short of its own goal;
   since closed (P2).* Fitted parameters and the `Pipeline` persist as strict
   JSON, but at evaluation time the fitted **model** could not be persisted at
@@ -130,10 +130,14 @@ orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
   majority class (0.615 / 0.0). Per the demand-first rule the project
   promotes nothing itself; its friction list is the new backlog below.
 
-**Next up:** work the `titanic` friction backlog below, demand-first — top
-observed-pain item first, one promotion per change, each consumed by the
-project that demanded it. Deprioritized until a project pulls them: more EDA
-helpers, more viz, more cookbook recipes, more CLI.
+**Next up:** the `titanic` backlog's items 6–8 are served (each promoted and
+consumed back by the project in the same change); item 9 — per-fold
+re-fitting of the transform chain — is the queue. It is deliberately *not*
+another batch item: it reopens the settled pure-composition decision on
+`ds.pipeline` (the fit-side gap items 5 and 9 both point at, whose
+"second project repeats the dance" trigger has fired) and deserves its own
+design pass. Deprioritized until a project pulls them: more EDA helpers,
+more viz, more cookbook recipes, more CLI.
 
 ## Friction backlog (from `projects/nyc_taxis`)
 
@@ -188,11 +192,17 @@ list so item references stay unambiguous; in observed-pain order:
    it). The project's raw `sklearn.model_selection.train_test_split` call is
    gone; the wrapper makes the identical scikit-learn call, so the split and
    the held-out metrics are byte-identical (accuracy 0.799 / F1 0.731).
-8. **`cross_validate_kfold` cannot stratify.** It wraps plain `KFold`, so on
-   the 62/38 target the fold class balance drifts (observed per-fold recall
-   0.64–0.79 across otherwise stable folds). A stratified option
-   (`StratifiedKFold` under a flag) would compose naturally with
-   `metrics_fn=classification_metrics`.
+8. ~~**`cross_validate_kfold` cannot stratify.**~~ — **resolved, with one
+   honest correction**: a `stratify` flag (`StratifiedKFold` under the hood,
+   same global-generator seeding) keeps every fold at the frame's class
+   balance, composing with `metrics_fn=classification_metrics`; the project
+   passes it. It fixes exactly what it controls — per-fold positive counts
+   went from a ~15-row spread to the ±1 rounding minimum — but the recall
+   drift this item blamed on that imbalance did **not** shrink (measured
+   across 30 seeds on the project's frame: mean per-fold recall spread ~0.13
+   with and without stratification). The drift is sampling variance in
+   *which* positives land in a fold, not in how many, so the project's CV
+   assertions were deliberately not tightened.
 9. **Cross-validation cannot re-fit the transform chain per fold.**
    `make_model` rebuilds the estimator per fold, but the frame handed to
    `cross_validate_kfold` already carries transforms fitted on the *whole*

@@ -245,14 +245,15 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
 
     # 8. Cross-validate on the training split before committing to a model —
     # the first real composition of cross_validate_kfold with
-    # classification_metrics. Two caveats, both recorded as friction in
-    # ROADMAP.md: the folds reuse transforms fitted on the *whole* training
-    # frame (the ds Pipeline cannot re-fit per fold), and KFold cannot
-    # stratify, so fold class balance drifts on a 62/38 target.
+    # classification_metrics, stratified so each fold keeps the 62/38 class
+    # balance (friction item 8). One caveat remains, recorded as friction in
+    # ROADMAP.md (item 9): the folds reuse transforms fitted on the *whole*
+    # training frame (the ds Pipeline cannot re-fit per fold).
     cv_scores = cross_validate_kfold(
         train,
         target=_TARGET,
         make_model=lambda: LogisticRegression(max_iter=1000),
+        stratify=True,
         metrics_fn=classification_metrics,
     )
     cv_scores.to_csv(output_dir / "cv_folds.csv")

@@ -7,6 +7,29 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Classification-shaped Model/Evaluate helpers, serving friction items 6–8 of
+  `ROADMAP.md`'s `titanic` backlog (demand-first, smallest win first; item 9
+  stays queued for its own design pass):
+  - `ds.modeling.fit_baseline` gains `strategy="majority"` (item 6) — predict
+    the modal training label (nulls ignored, ties to the smallest label), the
+    classification twin of `"mean"`. Scoped to numeric labels (the int-coded
+    0/1 target that raised the item); string labels raise a clear error until
+    a project demands them. `titanic`'s hand-rolled `y_train.mode()` reference
+    is gone, with byte-identical held-out metrics.
+  - `ds.modeling.tabular.train_test_split_random` (item 7) — the order-free
+    twin of `train_test_split_by_time`: shuffled, optionally stratified on a
+    named column whose class balance both halves preserve, seeded through
+    numpy's global generator like the rest of the stage (so `seed_everything`
+    reproduces the split). Replaces `titanic`'s raw scikit-learn
+    `train_test_split(stratify=...)` call, byte-identically.
+  - `ds.evaluation.cross_validate_kfold` gains `stratify=True` (item 8) —
+    `StratifiedKFold` under the flag, composing with
+    `metrics_fn=classification_metrics`; `titanic` passes it. Honest finding,
+    recorded in the ROADMAP strike: it fixes the fold class-balance drift it
+    controls (per-fold positive counts now within ±1, was a ~15-row spread)
+    but the per-fold recall drift the backlog blamed on that imbalance did
+    not shrink (~0.13 spread with and without, across 30 seeds) — that drift
+    is sampling variance in *which* positives land in a fold.
 - Second real-data project, and the first classification one:
   `projects/titanic` predicts passenger survival on the classic 891-row
   manifest (seaborn-data mirror), chosen for what it stresses — missing

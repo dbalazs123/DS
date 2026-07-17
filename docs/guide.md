@@ -405,7 +405,9 @@ cross_validate_kfold(            # plain shuffled k-fold, order-free data only
 ```
 
 Both default to `regression_metrics` per fold; pass
-`metrics_fn=classification_metrics` (or your own scorer) for classifiers.
+`metrics_fn=classification_metrics` (or your own scorer) for classifiers —
+and on a classification target give `cross_validate_kfold` `stratify=True`,
+so every fold keeps the frame's class balance instead of letting it drift.
 Finally, score candidates side by side — including the baseline — with
 `compare_models`, whose frame feeds `ds.viz.plot_model_comparison`:
 

@@ -75,11 +75,12 @@ more detail).
 ## Roadmap
 
 [`ROADMAP.md`](ROADMAP.md) carries the plan of record (P1–P5 all done; the
-`nyc_taxis` friction backlog is fully served, and the second real-data project,
-`titanic`, has regenerated the queue — next: work its backlog, items 6–9,
-demand-first), a goal evaluation of the whole toolkit, the friction backlogs
-from the real-data projects, and the settled-decision rationales this file's
-notes point to. Read it before starting new library work — and note its
+`nyc_taxis` friction backlog is fully served and `titanic`'s items 6–8 are
+too — the queue is `titanic` item 9, per-fold re-fitting of the transform
+chain, which reopens the settled pure-composition decision on `ds.pipeline`
+and needs its own design pass), a goal evaluation of the whole toolkit, the
+friction backlogs from the real-data projects, and the settled-decision
+rationales this file's notes point to. Read it before starting new library work — and note its
 ordering rule: new library work should trace to a friction item from a real
 project, not a brainstormed candidate list.
 

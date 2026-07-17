@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib as mpl
@@ -248,6 +249,45 @@ def test_cross_validate_kfold_rejects_bad_inputs() -> None:
         cross_validate_kfold(df, target="nope", make_model=lambda: LinearRegression())
     with pytest.raises(ValueError, match="n_splits"):
         cross_validate_kfold(df, target="y", make_model=lambda: LinearRegression(), n_splits=9)
+
+
+def test_cross_validate_kfold_stratify_keeps_fold_class_balance() -> None:
+    from sklearn.dummy import DummyClassifier
+
+    df = _labeled_frame(50)  # 70/30 target; plain KFold lets fold balance drift
+    counts: list[int] = []
+
+    def record_and_score(y_true: Sequence[int], y_pred: Sequence[int]) -> dict[str, float]:
+        counts.append(int(sum(y_true)))
+        return {"positives": float(sum(y_true))}
+
+    result = cross_validate_kfold(
+        df,
+        target="y",
+        make_model=lambda: DummyClassifier(strategy="most_frequent"),
+        n_splits=5,
+        stratify=True,
+        metrics_fn=record_and_score,
+    )
+    assert len(result) == 5
+    assert counts == [3, 3, 3, 3, 3]  # every 10-row fold carries exactly 30% positives
+
+
+def test_cross_validate_kfold_stratify_warns_on_sparse_class() -> None:
+    # scikit-learn warns (not raises) when a class has fewer members than
+    # n_splits; such folds simply miss that class.
+    from sklearn.dummy import DummyClassifier
+
+    df = pd.DataFrame({"x": range(6), "y": [0, 0, 0, 0, 0, 1]})
+    with pytest.warns(UserWarning, match="least populated class"):
+        result = cross_validate_kfold(
+            df,
+            target="y",
+            make_model=lambda: DummyClassifier(strategy="most_frequent"),
+            n_splits=3,
+            stratify=True,
+        )
+    assert len(result) == 3
 
 
 def test_compare_models_scores_side_by_side() -> None:
