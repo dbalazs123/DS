@@ -17,6 +17,7 @@ from ds.viz import (
     plot_missingness,
     plot_outliers,
     plot_residuals,
+    plot_series,
 )
 
 
@@ -62,6 +63,45 @@ def test_plot_residuals_draws_points_and_zero_line() -> None:
     ax = plot_residuals([1.0, 2.0, 3.0], [1.5, 1.5, 3.5])
     assert ax.collections  # the scatter
     assert ax.get_ylabel().startswith("residual")
+
+
+def test_plot_series_overlays_dashed_predictions_with_a_legend() -> None:
+    time = pd.date_range("2024-01-01", periods=4, freq="MS")
+    ax = plot_series(
+        time,
+        [1.0, 2.0, 3.0, 4.0],
+        predictions={"model": [1.1, 2.1, 2.9, 4.2]},
+        label="actual",
+    )
+    observed, predicted = ax.lines
+    assert observed.get_linestyle() == "-"
+    assert predicted.get_linestyle() == "--"
+    legend = ax.get_legend()
+    assert legend is not None
+    assert [text.get_text() for text in legend.get_texts()] == ["actual", "model"]
+
+
+def test_plot_series_composes_history_and_forecast_window() -> None:
+    history = pd.date_range("2024-01-01", periods=3, freq="MS")
+    future = pd.date_range("2024-04-01", periods=2, freq="MS")
+    ax = plot_series(history, [1.0, 2.0, 3.0], label="history")
+    returned = plot_series(future, [4.0, 5.0], predictions={"model": [3.9, 5.2]}, ax=ax)
+    assert returned is ax
+    assert len(ax.lines) == 3
+    # The colour cycle advances across calls, so composed lines stay distinct.
+    assert len({line.get_color() for line in ax.lines}) == 3
+
+
+def test_plot_series_stays_out_of_the_legend_when_unlabeled() -> None:
+    ax = plot_series([1, 2, 3], [1.0, 2.0, 3.0])
+    assert ax.get_legend() is None
+
+
+def test_plot_series_rejects_misaligned_lengths() -> None:
+    with pytest.raises(ValueError, match="values has 2"):
+        plot_series([1, 2, 3], [1.0, 2.0])
+    with pytest.raises(ValueError, match="predictions\\['model'\\]"):
+        plot_series([1, 2], [1.0, 2.0], predictions={"model": [1.0]})
 
 
 def test_plots_accept_an_existing_axes() -> None:

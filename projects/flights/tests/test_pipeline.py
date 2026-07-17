@@ -73,14 +73,14 @@ def test_engineer_trend_and_calendar_keeps_signal_drops_noise() -> None:
         }
     )
     out = pipeline.engineer_trend_and_calendar(df)
-    # month_index is the monotone months-elapsed counter: +1 per month,
-    # +12 per year.
-    assert (out["month_index"] - out["month_index"].iloc[0]).tolist() == [0, 1, 12]
-    # The weekday-of-the-1st artifacts and the columns consumed into
-    # month_index are gone; the one-hot source and the time axis stay.
-    for dropped in ("year", "date_year", "date_month", "date_dayofweek", "date_is_weekend"):
-        assert dropped not in out.columns
-    assert {"date", "month", "passengers", "month_index"} <= set(out.columns)
+    # date_elapsed_months is the monotone months-elapsed counter: +1 per
+    # month, +12 per year.
+    trend = out["date_elapsed_months"]
+    assert (trend - trend.iloc[0]).tolist() == [0, 1, 12]
+    # The scoped selection means the weekday-of-the-1st artifacts and the
+    # constant/redundant calendar columns never exist; the raw year (collinear
+    # with the trend) is dropped, and the one-hot source and time axis stay.
+    assert set(out.columns) == {"date", "month", "passengers", "date_elapsed_months"}
 
 
 def test_pipeline_end_to_end(tmp_path: Path) -> None:

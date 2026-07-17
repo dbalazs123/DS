@@ -337,6 +337,35 @@ def test_add_datetime_features_missing_column(sample_df: pd.DataFrame) -> None:
         add_datetime_features(sample_df, "nope")
 
 
+def test_add_datetime_features_emits_only_the_selected_subset(sample_df: pd.DataFrame) -> None:
+    out = add_datetime_features(sample_df, "Date", features=["month", "year"])
+    added = [col for col in out.columns if col not in sample_df.columns]
+    # Emitted in the documented order, regardless of the order requested.
+    assert added == ["Date_year", "Date_month"]
+
+
+def test_add_datetime_features_elapsed_months_is_monotone_and_stateless() -> None:
+    df = pd.DataFrame({"t": pd.to_datetime(["1949-12-01", "1950-01-15", "1951-01-01"])})
+    out = add_datetime_features(df, "t", features=["elapsed_months"])
+    elapsed = out["t_elapsed_months"]
+    # +1 across the year boundary, +12 across a full year; the day is ignored.
+    assert (elapsed - elapsed.iloc[0]).tolist() == [0, 1, 13]
+    # The origin is a fixed epoch, not learned from the frame, so the same
+    # month scores identically in a later, disjoint batch.
+    later = pd.DataFrame({"t": pd.to_datetime(["1950-01-31"])})
+    rescored = add_datetime_features(later, "t", features=["elapsed_months"])
+    assert rescored["t_elapsed_months"].iloc[0] == elapsed.iloc[1]
+    # Opt-in only: the default emission stays the calendar-position set.
+    assert "t_elapsed_months" not in add_datetime_features(df, "t").columns
+
+
+def test_add_datetime_features_rejects_a_bad_selection(sample_df: pd.DataFrame) -> None:
+    with pytest.raises(ValueError, match="unknown datetime features"):
+        add_datetime_features(sample_df, "Date", features=["decade"])  # type: ignore[list-item]
+    with pytest.raises(ValueError, match="at least one"):
+        add_datetime_features(sample_df, "Date", features=[])
+
+
 def test_one_hot_encode_replaces_categorical() -> None:
     df = pd.DataFrame({"n": [1, 2], "c": ["a", "b"]})
     out = one_hot_encode(df)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -235,6 +235,71 @@ def plot_model_comparison(
     return ax
 
 
+def plot_series(
+    time: Sequence[object] | pd.Series,
+    values: Sequence[float] | pd.Series,
+    *,
+    predictions: Mapping[str, Sequence[float] | pd.Series] | None = None,
+    label: str | None = None,
+    ax: Axes | None = None,
+) -> Axes:
+    """Plot one series over time, optionally overlaid with prediction series.
+
+    The time-series workhorse: a solid line for the observed values and, when
+    ``predictions`` is given, one dashed line per named prediction series over
+    the same time axis — the standard forecast-vs-actual visual. Lines take
+    their colours from the Axes' colour cycle (the shared palette after
+    :func:`set_theme`), so repeated calls on the same ``ax`` compose without
+    colliding — e.g. draw the training tail first, then the held-out window
+    with its forecasts:
+
+    .. code-block:: python
+
+        ax = plot_series(history["date"], history["y"], label="history")
+        plot_series(
+            test["date"],
+            y_test,
+            predictions={"model": preds, "seasonal naive": naive_preds},
+            label="actual",
+            ax=ax,
+        )
+
+    Args:
+        time: Time-axis values (datetimes, or anything matplotlib can order).
+        values: Observed values, aligned with ``time``.
+        predictions: Optional mapping of series name to predicted values, each
+            aligned with ``time``; drawn dashed, named in the legend.
+        label: Legend label for the observed series; it stays out of the
+            legend when omitted.
+        ax: Existing Axes to draw on; a new figure is created when omitted.
+
+    Returns:
+        The Axes the series was drawn on.
+
+    Raises:
+        ValueError: If ``values`` (or any prediction series) differs in length
+            from ``time``.
+    """
+    named = dict(predictions or {})
+    if len(values) != len(time):
+        raise ValueError(f"values has {len(values)} points but time has {len(time)}")
+    for name, preds in named.items():
+        if len(preds) != len(time):
+            raise ValueError(
+                f"predictions[{name!r}] has {len(preds)} points but time has {len(time)}"
+            )
+    # A Series keeps datetimes as datetime64, which matplotlib's date
+    # converter understands regardless of how `time` was passed in.
+    axis = pd.Series(time)
+    ax = _resolve_ax(ax)
+    ax.plot(axis, values, label=label)
+    for name, preds in named.items():
+        ax.plot(axis, preds, linestyle="--", label=name)
+    if label is not None or named:
+        ax.legend()
+    return ax
+
+
 __all__ = [
     "PALETTE",
     "plot_confusion_matrix",
@@ -242,5 +307,6 @@ __all__ = [
     "plot_model_comparison",
     "plot_outliers",
     "plot_residuals",
+    "plot_series",
     "set_theme",
 ]

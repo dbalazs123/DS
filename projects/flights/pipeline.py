@@ -11,14 +11,16 @@ and it is the first data to stress the toolkit's time-series surface:
 ``"seasonal_naive"`` strategies their first.
 
 The pipeline runs the full lifecycle on ``ds`` + scikit-learn alone: fetch →
-validate → explore → build the time axis and calendar/trend features →
+validate → explore → build the time axis and select the datetime features
+that apply (month effects + the library's elapsed-months trend) →
 chronological split → fit the one-step transform plan on the training window
 (``ds.pipeline.fit_pipeline``) → cross-validate with rolling-origin folds →
 persist the scoring pipeline and the fitted model → score the held-out window
 from the reloaded model → evaluate against the naive-last and seasonal-naive
-baselines → visualize. Friction it surfaced in the library is recorded in
-``ROADMAP.md`` — that regenerated backlog is as much the deliverable as the
-forecast.
+baselines → visualize with ``ds.viz.plot_series``. Friction it surfaced in
+the library was recorded in ``ROADMAP.md`` — that regenerated backlog was as
+much the deliverable as the forecast, and this pipeline now consumes the
+helpers it demanded (items 10–12).
 
 Run it with::
 
@@ -50,7 +52,7 @@ from ds.modeling.persistence import load_model, save_model
 from ds.modeling.tabular import split_features_target
 from ds.modeling.timeseries import train_test_split_by_time
 from ds.pipeline import FitStep, fit_pipeline
-from ds.preprocessing import drop_constant_columns, standardize_column_names
+from ds.preprocessing import standardize_column_names
 from ds.validation import (
     assert_in_range,
     assert_in_set,
@@ -58,7 +60,7 @@ from ds.validation import (
     check_schema,
     require_columns,
 )
-from ds.viz import PALETTE, plot_model_comparison, plot_residuals, set_theme
+from ds.viz import plot_model_comparison, plot_residuals, plot_series, set_theme
 
 logger = get_logger(__name__)
 
@@ -134,33 +136,28 @@ def build_time_axis(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def engineer_trend_and_calendar(df: pd.DataFrame) -> pd.DataFrame:
-    """Derive the trend feature and drop the calendar columns that are noise here.
+    """Add the trend term and keep only the datetime signal that applies here.
 
-    ``add_datetime_features`` expands ``date`` into the full calendar set; on
-    a monthly series half of it does not apply. ``date_dayofweek`` and
-    ``date_is_weekend`` are artifacts of stamping each month to its first day
-    (the weekday of the 1st carries no passenger signal), so they are dropped
-    by hand; ``date_day`` and ``date_hour`` are constant and are left for
-    ``drop_constant_columns``. ``date_year`` and ``date_month`` are consumed
-    into ``month_index`` — the monotone months-elapsed counter
-    (``year * 12 + month``) that gives a linear model its trend term — and
-    then dropped too: the raw ``month`` name column carries the seasonal
-    shape into the one-hot step, where a *numeric* month would wrongly order
-    December next to nothing and a duplicate year column would be collinear
-    with the trend.
+    On a monthly series most of the full calendar set is constant or noise
+    (``date_dayofweek``/``date_is_weekend`` would carry the weekday the 1st
+    of each month lands on), so the expansion is scoped to exactly what the
+    model uses instead of hand-pruned afterwards: the trend enters as the
+    library's ``date_elapsed_months`` — the monotone, stateless
+    months-since-a-fixed-epoch counter that replaced this project's
+    hand-rolled ``month_index``. The seasonal shape rides on the raw
+    ``month`` name column into the one-hot step (a *numeric* month would
+    wrongly order December next to nothing), and the raw ``year`` column is
+    dropped as collinear with the trend.
 
     Args:
         df: Frame with ``date``, ``year`` and ``month`` columns.
 
     Returns:
-        A new frame with ``month_index`` added and the redundant/noise
-        calendar columns (including the raw ``year``) removed.
+        A new frame with ``date_elapsed_months`` added and the raw ``year``
+        removed.
     """
-    out = add_datetime_features(df, "date")
-    out["month_index"] = out["date_year"] * 12 + out["date_month"]
-    return out.drop(
-        columns=["year", "date_year", "date_month", "date_dayofweek", "date_is_weekend"]
-    )
+    out = add_datetime_features(df, "date", features=["elapsed_months"])
+    return out.drop(columns=["year"])
 
 
 def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
@@ -200,14 +197,14 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
 
     # 4. Explore — persist the profile the modeling choices below rest on:
     # the summary, the seasonal shape (mean passengers per calendar month),
-    # and the series itself. The line plot is hand-rolled: ds.viz has no
-    # time-series plot (recorded as friction in ROADMAP.md).
+    # and the series itself (ds.viz.plot_series — the plot this project's
+    # friction item 10 demanded).
     summarize(df).to_csv(output_dir / "summary.csv")
     seasonal_profile = df.groupby("month")[_TARGET].mean().reindex(_MONTH_NAMES)
     seasonal_profile.to_csv(output_dir / "seasonality.csv")
     set_theme("notebook")
     fig, ax = plt.subplots()
-    ax.plot(df["date"], df[_TARGET], color=PALETTE[0])
+    plot_series(df["date"], df[_TARGET], ax=ax)
     ax.set_xlabel("month")
     ax.set_ylabel("passengers (thousands)")
     ax.set_title("International airline passengers, 1949-1960")
@@ -215,10 +212,9 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     plt.close(fig)
 
     # 5. Stateless features — nothing here learns statistics, so it is safe
-    # before the split. drop_constant_columns removes the date_day/date_hour
-    # columns that are constant on a monthly series.
+    # before the split. The scoped selection emits only what the model uses,
+    # so there is nothing left for drop_constant_columns to catch.
     df = engineer_trend_and_calendar(df)
-    df = drop_constant_columns(df)
 
     # 6. Chronological split — the held-out window (the last ~29 months,
     # 1958-08 through 1960-12) is strictly in the training data's future,
@@ -281,26 +277,28 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     seasonal = fit_baseline(y_train, strategy="seasonal_naive", season_length=SEASON_LENGTH)
     seasonal_preds = seasonal.predict(len(y_test))
     naive_last_preds = naive_last.predict(len(y_test))
+    linear_preds = [float(value) for value in preds]
     comparison = compare_models(
         y_test.tolist(),
         {
-            "linear_regression": [float(value) for value in preds],
+            "linear_regression": linear_preds,
             "seasonal_naive": seasonal_preds,
             "naive_last": naive_last_preds,
         },
     )
     comparison.to_csv(output_dir / "model_comparison.csv")
-    metrics = regression_metrics(y_test.tolist(), preds.tolist())
+    metrics = regression_metrics(y_test.tolist(), linear_preds)
     seasonal_scores = regression_metrics(y_test.tolist(), seasonal_preds)
     metrics.update({f"seasonal_naive_{name}": value for name, value in seasonal_scores.items()})
     naive_scores = regression_metrics(y_test.tolist(), naive_last_preds)
     metrics.update({f"naive_last_{name}": value for name, value in naive_scores.items()})
     logger.info("Held-out metrics vs baselines: %s", metrics)
 
-    # 12. Visualize. The forecast-vs-actual plot — the standard forecasting
-    # visual — is hand-rolled like the series plot above (same friction item).
+    # 12. Visualize. The forecast-vs-actual plot composes two plot_series
+    # calls on one Axes: the training tail first, then the held-out window
+    # with the model and seasonal-naive forecasts overlaid.
     fig2, ax2 = plt.subplots()
-    plot_residuals(y_test.tolist(), preds.tolist(), ax=ax2)
+    plot_residuals(y_test.tolist(), linear_preds, ax=ax2)
     ax2.set_title("Residuals vs predicted - held-out window")
     fig2.savefig(output_dir / "residuals.png", bbox_inches="tight")
     plt.close(fig2)
@@ -312,14 +310,17 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
 
     fig4, ax4 = plt.subplots()
     history = train.iloc[-2 * SEASON_LENGTH :]
-    ax4.plot(history["date"], history[_TARGET], color=PALETTE[7], label="history")
-    ax4.plot(test["date"], y_test, color=PALETTE[0], label="actual")
-    ax4.plot(test["date"], preds, color=PALETTE[1], linestyle="--", label="linear regression")
-    ax4.plot(test["date"], seasonal_preds, color=PALETTE[2], linestyle=":", label="seasonal naive")
+    plot_series(history["date"], history[_TARGET], label="history", ax=ax4)
+    plot_series(
+        test["date"],
+        y_test,
+        predictions={"linear regression": linear_preds, "seasonal naive": seasonal_preds},
+        label="actual",
+        ax=ax4,
+    )
     ax4.set_xlabel("month")
     ax4.set_ylabel("passengers (thousands)")
     ax4.set_title("Held-out window - forecasts vs actual")
-    ax4.legend()
     fig4.savefig(output_dir / "forecast.png", bbox_inches="tight")
     plt.close(fig4)
 

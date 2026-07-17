@@ -7,6 +7,40 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- The `flights` friction backlog served (P7 — `ROADMAP.md` items 10–13, in
+  observed-pain order, each dogfooded by `projects/flights` in the same
+  change with equivalent held-out metrics):
+  - `ds.viz.plot_series` (item 10) — the stage's first time-axis plot: a
+    solid observed line plus optional dashed, named prediction overlays
+    (the standard forecast-vs-actual visual), colours drawn from the Axes'
+    cycle so repeated calls on one `ax` compose. One helper replaced both
+    of the project's hand-rolled matplotlib figures: the raw series is a
+    single call, the forecast view two composed calls (training tail, then
+    the held-out window with the model and seasonal-naive overlays).
+  - `ds.features.add_datetime_features` gains `features=` (item 11) — an
+    explicit selection of which datetime features to emit, in a fixed
+    documented order; the default (the full calendar set) is unchanged.
+    Explicit selection was chosen over a resolution-aware default because
+    inferring resolution from the frame is fitted state in disguise (a
+    later scoring batch can be too small to infer the same answer from)
+    and misfires silently. The project's hand-drop of the
+    weekday-of-the-1st noise columns is gone — the scoped call never emits
+    them.
+  - `"elapsed_months"` (item 12) — an opt-in selectable feature of
+    `add_datetime_features` (not a second helper: same source column, same
+    expansion mechanism, and item 11's parameter already provides opt-in)
+    emitting whole calendar months since a fixed epoch (January of year 0,
+    `year * 12 + month - 1`) — the monotone trend counter a linear
+    forecaster needs. The fixed epoch keeps scoring stateless: nothing is
+    learned from the frame, and for a trend term only differences matter.
+    Kept out of the default set (a modeling device, near-collinear with
+    `_year`); replaces the project's hand-rolled `month_index` with
+    equivalent metrics (the counter differs by a constant the intercept
+    absorbs).
+  - Item 13 (the hand-assembled time axis) — **struck, not built**: one
+    `pd.to_datetime(..., format=)` call plus a project-specific uniqueness
+    check, observed once, is below the helper bar. Won't build until a
+    second project repeats the pain; rationale recorded in `ROADMAP.md`.
 - Third real-data project, and the first **forecasting** one:
   `projects/flights` forecasts the 144 monthly international-airline-
   passenger totals, 1949–1960 (the classic Box & Jenkins series,

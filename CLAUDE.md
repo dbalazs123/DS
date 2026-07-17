@@ -75,13 +75,14 @@ more detail).
 
 ## Roadmap
 
-[`ROADMAP.md`](ROADMAP.md) carries the plan of record (P1–P6 all done; the
-third demand loop — `projects/flights`, the first forecasting project —
-regenerated the queue, so the open backlog is its friction items 10–13, led
-by the missing time-series plot in `ds.viz`), a goal evaluation of the whole
-toolkit, the friction backlogs from the real-data projects, and the
-settled-decision rationales this file's notes point to. Read it before
-starting new library work — and note its
+[`ROADMAP.md`](ROADMAP.md) carries the plan of record (P1–P7 all done; P7
+served the `flights` backlog — `ds.viz.plot_series`, the
+`add_datetime_features` feature selection with its opt-in elapsed-months
+trend counter, and item 13 struck with a recorded won't-build rationale —
+so the queue is empty until a fourth demand loop regenerates it), a goal
+evaluation of the whole toolkit, the friction backlogs from the real-data
+projects, and the settled-decision rationales this file's notes point to.
+Read it before starting new library work — and note its
 ordering rule: new library work should trace to a friction item from a real
 project, not a brainstormed candidate list.
 
