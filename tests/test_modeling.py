@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib as mpl
@@ -21,7 +22,7 @@ from ds.evaluation import (
 from ds.modeling.baseline import fit_baseline
 from ds.modeling.nlp import count_tokens
 from ds.modeling.persistence import load_model, save_model
-from ds.modeling.tabular import split_features_target
+from ds.modeling.tabular import split_features_target, train_test_split_random
 from ds.modeling.timeseries import train_test_split_by_time
 from ds.viz import set_theme
 
@@ -48,6 +49,45 @@ def test_time_split_is_chronological() -> None:
 def test_time_split_bad_size() -> None:
     with pytest.raises(ValueError, match="test_size"):
         train_test_split_by_time(pd.DataFrame({"t": [1]}), "t", test_size=1.5)
+
+
+def _labeled_frame(n: int = 100) -> pd.DataFrame:
+    # 70/30 binary target, so stratification is observable.
+    return pd.DataFrame({"x": range(n), "y": [1 if i % 10 < 3 else 0 for i in range(n)]})
+
+
+def test_random_split_sizes_and_columns() -> None:
+    train, test = train_test_split_random(_labeled_frame(), test_size=0.2)
+    assert len(train) == 80
+    assert len(test) == 20
+    assert list(train.columns) == list(test.columns) == ["x", "y"]
+    assert sorted([*train["x"], *test["x"]]) == list(range(100))  # a partition, not a resample
+
+
+def test_random_split_stratify_preserves_class_balance() -> None:
+    train, test = train_test_split_random(_labeled_frame(), test_size=0.2, stratify="y")
+    assert train["y"].mean() == pytest.approx(0.3)
+    assert test["y"].mean() == pytest.approx(0.3)
+
+
+def test_random_split_is_reproducible_under_seed() -> None:
+    from ds import seed_everything
+
+    seed_everything(7)
+    first, _ = train_test_split_random(_labeled_frame(), stratify="y")
+    seed_everything(7)
+    second, _ = train_test_split_random(_labeled_frame(), stratify="y")
+    assert first["x"].tolist() == second["x"].tolist()
+
+
+def test_random_split_rejects_bad_inputs() -> None:
+    df = _labeled_frame(10)
+    with pytest.raises(ValueError, match="test_size"):
+        train_test_split_random(df, test_size=1.0)
+    with pytest.raises(KeyError):
+        train_test_split_random(df, stratify="nope")
+    with pytest.raises(ValueError, match="least populated class"):
+        train_test_split_random(pd.DataFrame({"y": [0, 0, 1]}), stratify="y")
 
 
 def test_regression_metrics_perfect() -> None:
@@ -83,6 +123,26 @@ def test_fit_baseline_mean_ignores_nulls() -> None:
     y = pd.Series([1.0, 3.0, None])
     baseline = fit_baseline(y, strategy="mean")
     assert baseline.predict(3) == [2.0, 2.0, 2.0]
+
+
+def test_fit_baseline_majority_predicts_modal_label() -> None:
+    y = pd.Series([0, 1, 1, 0, 1, None])
+    baseline = fit_baseline(y, strategy="majority")
+    assert baseline.values == (1.0,)
+    assert baseline.predict(3) == [1.0, 1.0, 1.0]
+
+
+def test_fit_baseline_majority_breaks_ties_low() -> None:
+    assert fit_baseline(pd.Series([1, 0, 0, 1]), strategy="majority").values == (0.0,)
+
+
+def test_fit_baseline_majority_rejects_bad_targets() -> None:
+    with pytest.raises(ValueError, match="all-null"):
+        fit_baseline(pd.Series([None, None], dtype=float), strategy="majority")
+    with pytest.raises(ValueError, match="numeric labels"):
+        fit_baseline(pd.Series(["yes", "yes", "no"]), strategy="majority")
+    with pytest.raises(ValueError, match="season_length"):
+        fit_baseline(pd.Series([0, 1, 1]), strategy="majority", season_length=2)
 
 
 def test_fit_baseline_naive_last_repeats_final_value() -> None:
@@ -189,6 +249,45 @@ def test_cross_validate_kfold_rejects_bad_inputs() -> None:
         cross_validate_kfold(df, target="nope", make_model=lambda: LinearRegression())
     with pytest.raises(ValueError, match="n_splits"):
         cross_validate_kfold(df, target="y", make_model=lambda: LinearRegression(), n_splits=9)
+
+
+def test_cross_validate_kfold_stratify_keeps_fold_class_balance() -> None:
+    from sklearn.dummy import DummyClassifier
+
+    df = _labeled_frame(50)  # 70/30 target; plain KFold lets fold balance drift
+    counts: list[int] = []
+
+    def record_and_score(y_true: Sequence[int], y_pred: Sequence[int]) -> dict[str, float]:
+        counts.append(int(sum(y_true)))
+        return {"positives": float(sum(y_true))}
+
+    result = cross_validate_kfold(
+        df,
+        target="y",
+        make_model=lambda: DummyClassifier(strategy="most_frequent"),
+        n_splits=5,
+        stratify=True,
+        metrics_fn=record_and_score,
+    )
+    assert len(result) == 5
+    assert counts == [3, 3, 3, 3, 3]  # every 10-row fold carries exactly 30% positives
+
+
+def test_cross_validate_kfold_stratify_warns_on_sparse_class() -> None:
+    # scikit-learn warns (not raises) when a class has fewer members than
+    # n_splits; such folds simply miss that class.
+    from sklearn.dummy import DummyClassifier
+
+    df = pd.DataFrame({"x": range(6), "y": [0, 0, 0, 0, 0, 1]})
+    with pytest.warns(UserWarning, match="least populated class"):
+        result = cross_validate_kfold(
+            df,
+            target="y",
+            make_model=lambda: DummyClassifier(strategy="most_frequent"),
+            n_splits=3,
+            stratify=True,
+        )
+    assert len(result) == 3
 
 
 def test_compare_models_scores_side_by_side() -> None:

@@ -311,14 +311,18 @@ are persisted separately.
 
 ### Model — `ds.modeling`
 
-Split tabular data into features and target, or split a time series
-chronologically so the test window is strictly in the future.
+Split tabular data into features and target, and hold out a test set: split
+a time series chronologically so the test window is strictly in the future,
+or order-free data randomly — stratified on the target if a class imbalance
+must survive the split. The random split draws from numpy's global
+generator, so `seed_everything` makes it reproducible.
 
 ```python
-from ds.modeling.tabular import split_features_target
+from ds.modeling.tabular import split_features_target, train_test_split_random
 from ds.modeling.timeseries import train_test_split_by_time
 
-train, test = train_test_split_by_time(df, "date", test_size=0.2)
+train, test = train_test_split_by_time(df, "date", test_size=0.2)   # temporal
+train, test = train_test_split_random(df, test_size=0.2, stratify="label")  # order-free
 x_train, y_train = split_features_target(train, "amount")
 ```
 
@@ -332,6 +336,10 @@ from ds.modeling.baseline import fit_baseline
 baseline = fit_baseline(y_train, strategy="mean")  # or "naive_last",
 baseline_preds = baseline.predict(len(y_test))     # or "seasonal_naive" with season_length=
 ```
+
+For classification the same call takes `strategy="majority"` — predict the
+modal training label (numeric, e.g. an int-coded 0/1 target), the reference
+every classifier must beat.
 
 Once an estimator is fitted, persist it so a later run (or another process)
 scores without refitting — the model-side counterpart to
@@ -397,7 +405,9 @@ cross_validate_kfold(            # plain shuffled k-fold, order-free data only
 ```
 
 Both default to `regression_metrics` per fold; pass
-`metrics_fn=classification_metrics` (or your own scorer) for classifiers.
+`metrics_fn=classification_metrics` (or your own scorer) for classifiers —
+and on a classification target give `cross_validate_kfold` `stratify=True`,
+so every fold keeps the frame's class balance instead of letting it drift.
 Finally, score candidates side by side — including the baseline — with
 `compare_models`, whose frame feeds `ds.viz.plot_model_comparison`:
 

@@ -37,7 +37,6 @@ matplotlib.use("Agg")  # headless: render to file, never open a window
 import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
 
 from ds import Settings, get_logger, get_settings, seed_everything
 from ds.eda import missing_value_report, summarize
@@ -50,8 +49,9 @@ from ds.evaluation import (
 )
 from ds.features import fit_one_hot_categories, fit_scale_params
 from ds.io import load_raw, save_params, save_processed
+from ds.modeling.baseline import fit_baseline
 from ds.modeling.persistence import load_model, save_model
-from ds.modeling.tabular import split_features_target
+from ds.modeling.tabular import split_features_target, train_test_split_random
 from ds.pipeline import Pipeline, PipelineStep
 from ds.preprocessing import (
     apply_clip_outliers,
@@ -206,10 +206,10 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     df = engineer_passenger_features(df)
 
     # 5. Split before anything fit-based. The manifest has no time axis, so
-    # this is a shuffled split, stratified on the target to keep the 62/38
-    # class balance in both halves (scikit-learn's, seeded by
-    # seed_everything; ds.modeling only ships the chronological splitter).
-    train, test = train_test_split(df, test_size=0.2, stratify=df[_TARGET])
+    # this is a shuffled split (friction item 7's order-free helper, seeded
+    # by seed_everything), stratified on the target to keep the 62/38 class
+    # balance in both halves.
+    train, test = train_test_split_random(df, test_size=0.2, stratify=_TARGET)
 
     # 6. Fit on train, apply to both. Each parameter set is fitted on the
     # train frame as transformed by the steps before it, then the whole
@@ -245,14 +245,15 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
 
     # 8. Cross-validate on the training split before committing to a model —
     # the first real composition of cross_validate_kfold with
-    # classification_metrics. Two caveats, both recorded as friction in
-    # ROADMAP.md: the folds reuse transforms fitted on the *whole* training
-    # frame (the ds Pipeline cannot re-fit per fold), and KFold cannot
-    # stratify, so fold class balance drifts on a 62/38 target.
+    # classification_metrics, stratified so each fold keeps the 62/38 class
+    # balance (friction item 8). One caveat remains, recorded as friction in
+    # ROADMAP.md (item 9): the folds reuse transforms fitted on the *whole*
+    # training frame (the ds Pipeline cannot re-fit per fold).
     cv_scores = cross_validate_kfold(
         train,
         target=_TARGET,
         make_model=lambda: LogisticRegression(max_iter=1000),
+        stratify=True,
         metrics_fn=classification_metrics,
     )
     cv_scores.to_csv(output_dir / "cv_folds.csv")
@@ -271,13 +272,13 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     preds = model.predict(x_test)
 
     # 10. Evaluate — the classification stack this project exists to exercise.
-    # The majority-class reference is hand-rolled: ds.modeling.fit_baseline is
-    # regression-shaped (its "mean" strategy would predict 0.38, not a class
-    # label) — recorded as friction in ROADMAP.md rather than built here. The
-    # sex-only rule (predict survival iff female) is the classic strong
-    # heuristic every Titanic model must beat to justify its features.
-    majority = int(y_train.mode().iloc[0])
-    majority_preds = [majority] * len(y_test)
+    # The majority-class reference comes from the library's "majority"
+    # baseline (friction item 6, promoted from this project's hand-rolled
+    # y_train.mode()). The sex-only rule (predict survival iff female) is the
+    # classic strong heuristic every Titanic model must beat to justify its
+    # features.
+    majority = fit_baseline(y_train, strategy="majority")
+    majority_preds = [int(value) for value in majority.predict(len(y_test))]
     sex_only_preds = [int(value) for value in x_test["sex_female"] > 0]
     comparison = compare_models(
         y_test.tolist(),

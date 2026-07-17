@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from ds.modeling.baseline import Baseline, fit_baseline
 from ds.modeling.persistence import load_model, save_model
-from ds.modeling.tabular import split_features_target
+from ds.modeling.tabular import split_features_target, train_test_split_random
 from ds.modeling.timeseries import train_test_split_by_time
 
 __all__ = [
@@ -22,4 +22,5 @@ __all__ = [
     "save_model",
     "split_features_target",
     "train_test_split_by_time",
+    "train_test_split_random",
 ]

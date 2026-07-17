@@ -7,7 +7,7 @@ from typing import Any
 
 import pandas as pd
 from sklearn import metrics
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, StratifiedKFold
 
 
 def regression_metrics(y_true: Sequence[float], y_pred: Sequence[float]) -> dict[str, float]:
@@ -191,16 +191,18 @@ def cross_validate_kfold(
     make_model: Callable[[], Any],
     n_splits: int = 5,
     shuffle: bool = True,
+    stratify: bool = False,
     metrics_fn: MetricsFunction = regression_metrics,
 ) -> pd.DataFrame:
     """Plain k-fold cross-validation for order-free tabular data.
 
-    Wraps :class:`sklearn.model_selection.KFold` and scores every fold with
-    the stage's own metric helpers, returning the same per-fold frame as
-    :func:`cross_validate_by_time`. Use that function instead whenever the
-    rows are time-ordered — a shuffled k-fold on temporal data trains on the
-    future. Shuffling draws from numpy's global generator, so
-    :func:`ds.seed_everything` makes the folds reproducible.
+    Wraps :class:`sklearn.model_selection.KFold` (or
+    :class:`~sklearn.model_selection.StratifiedKFold` with ``stratify=True``)
+    and scores every fold with the stage's own metric helpers, returning the
+    same per-fold frame as :func:`cross_validate_by_time`. Use that function
+    instead whenever the rows are time-ordered — a shuffled k-fold on
+    temporal data trains on the future. Shuffling draws from numpy's global
+    generator, so :func:`ds.seed_everything` makes the folds reproducible.
 
     Args:
         df: The modeling frame (features + target).
@@ -210,6 +212,12 @@ def cross_validate_kfold(
             instance is built per fold.
         n_splits: Number of folds.
         shuffle: Whether to shuffle rows before splitting.
+        stratify: Keep every fold's target class balance at the frame's —
+            the option for classification targets (composes with
+            ``metrics_fn=classification_metrics``), where plain ``KFold``
+            lets fold class proportions drift. scikit-learn warns (via
+            ``UserWarning``) when a class has fewer than ``n_splits``
+            members, leaving some folds without that class.
         metrics_fn: Fold-scoring function; defaults to
             :func:`regression_metrics` (use :func:`classification_metrics`
             for classifiers).
@@ -229,8 +237,12 @@ def cross_validate_kfold(
 
     features = df.drop(columns=[target])
     rows: list[dict[str, float]] = []
-    folds = KFold(n_splits=n_splits, shuffle=shuffle)
-    for train_idx, test_idx in folds.split(features):
+    folds = (
+        StratifiedKFold(n_splits=n_splits, shuffle=shuffle)
+        if stratify
+        else KFold(n_splits=n_splits, shuffle=shuffle)
+    )
+    for train_idx, test_idx in folds.split(features, df[target]):
         model = make_model()
         model.fit(features.iloc[train_idx], df[target].iloc[train_idx])
         predictions = model.predict(features.iloc[test_idx])
