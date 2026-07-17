@@ -76,12 +76,13 @@ more detail).
 
 ## Roadmap
 
-[`ROADMAP.md`](ROADMAP.md) carries the plan of record (P1–P8 all done; P8
-ran the fourth demand loop — `projects/diamonds`, the first multiclass
-project, which earned the ordinal-encoding pair, `bin_column`,
-`plot_outliers` and the 5-class metric surface their first real consumers
-and regenerated the queue as backlog items 14–17), a goal evaluation of the
-whole toolkit, the friction backlogs from the real-data projects, and the
+[`ROADMAP.md`](ROADMAP.md) carries the plan of record (P1–P9 all done; P9
+served the `diamonds` backlog — the `labels=` display mapping on the
+classification metric/plot surface, the template fixed to scaffold the
+shape real pipelines keep, item 15 struck and item 17 resolved by
+documenting the `functools.partial` idiom — leaving the queue empty, so
+the next step is a fifth demand loop), a goal evaluation of the whole
+toolkit, the friction backlogs from the real-data projects, and the
 settled-decision rationales this file's notes point to.
 Read it before starting new library work — and note its
 ordering rule: new library work should trace to a friction item from a real

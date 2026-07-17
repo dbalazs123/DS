@@ -2,7 +2,7 @@
 
 Run from the repo root with::
 
-    uv run pytest projects/{{ project_slug }}
+    uv run pytest projects/{{ project_slug }} --no-cov
 """
 
 from __future__ import annotations
@@ -10,6 +10,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 from types import ModuleType
+
+from ds import Settings
 
 PIPELINE_PATH = Path(__file__).resolve().parent.parent / "pipeline.py"
 
@@ -25,12 +27,14 @@ def _load_pipeline() -> ModuleType:
 
 def test_run_returns_metrics(tmp_path: Path) -> None:
     pipeline = _load_pipeline()
-    metrics = pipeline.run(tmp_path / "out")
+    settings = Settings(data_dir=tmp_path / "data")
+    metrics = pipeline.run(tmp_path / "out", settings=settings)
     assert isinstance(metrics, dict)
 
 
 def test_run_creates_output_dir(tmp_path: Path) -> None:
     pipeline = _load_pipeline()
+    settings = Settings(data_dir=tmp_path / "data")
     out = tmp_path / "out"
-    pipeline.run(out)
+    pipeline.run(out, settings=settings)
     assert out.is_dir()

@@ -1,11 +1,11 @@
 # {{ project_name }}
-
+{% if description %}
 {{ description }}
-
+{% endif %}
 ## Run
 
 ```bash
-uv run python projects/{{ project_slug }}/pipeline.py
+uv run ds run {{ project_slug }}
 ```
 
 ## Test

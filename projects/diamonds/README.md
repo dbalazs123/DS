@@ -69,8 +69,10 @@ Friction it surfaced in the library is recorded as the backlog in
   Fair..Ideal to 0..4 with the explicit quality order — stateless (nothing
   learned from the frame), so safe pre-split, and it lands the labels in the
   integer form the metric surface and `fit_baseline("majority")` are typed
-  for. The cost: every persisted artifact and plot needs the codes mapped
-  back to names by hand.
+  for. The persisted artifacts and plots show the grade names via the
+  `labels=` display mapping on `confusion_frame` / `per_class_metrics` /
+  `plot_confusion_matrix` (which this project's friction earned — the metric
+  math stays on the codes).
 - **Two references.** The majority class (predict Ideal for everything:
   accuracy 0.400, macro F1 0.114) and a proportions rule reading only the
   raw `depth`/`table` bands from the standard round-brilliant grading charts

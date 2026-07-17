@@ -426,6 +426,18 @@ confusion_frame(y_true, y_pred)          # labeled confusion matrix (true x pred
 per_class_metrics(y_true, y_pred)        # precision/recall/f1/support per class
 ```
 
+With an int-coded target (the form the metric surface and
+`fit_baseline("majority")` are typed for), pass `labels=` to put the class
+*names* on the frames' axes — display only, the metric math stays on the
+codes, and codes missing from the mapping keep their integer form:
+
+```python
+grades = {0: "Fair", 1: "Good", 2: "Very Good", 3: "Premium", 4: "Ideal"}
+
+confusion_frame(y_true, y_pred, labels=grades)
+per_class_metrics(y_true, y_pred, labels=grades)
+```
+
 One held-out score can flatter (or slander) a model; cross-validate to see the
 spread. For time-ordered rows use the rolling-origin form — every test window
 is strictly in its training data's future, the repeated-fold counterpart to
@@ -451,6 +463,16 @@ Both default to `regression_metrics` per fold; pass
 `metrics_fn=classification_metrics` (or your own scorer) for classifiers —
 and on a classification target give `cross_validate_kfold` `stratify=True`,
 so every fold keeps the frame's class balance instead of letting it drift.
+Beyond two classes, `classification_metrics`' `average="binary"` default
+raises, and the `metrics_fn` hooks take a two-argument callable — bind the
+average instead of writing a wrapper:
+
+```python
+from functools import partial
+
+macro_metrics = partial(classification_metrics, average="macro")
+cross_validate_kfold(..., metrics_fn=macro_metrics, stratify=True)
+```
 
 Watch what frame you hand it: if the features already carry fit-based
 transforms fitted on the whole training split, every fold's test rows have
@@ -501,7 +523,7 @@ from ds.viz import (
 set_theme("notebook")                    # consistent matplotlib theme + palette
 plot_missingness(df)                     # bar chart of missing fractions
 plot_outliers(df)                        # bar chart of outlier counts per column
-plot_confusion_matrix(y_true, y_pred)    # annotated heatmap
+plot_confusion_matrix(y_true, y_pred)    # annotated heatmap (labels= names the ticks)
 plot_residuals(y_true, y_pred)           # residual-vs-predicted diagnostic
 plot_model_comparison(comparison)        # one metric across models, as bars
 plot_series(df["date"], df["amount"])    # one series over a time axis

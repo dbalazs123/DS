@@ -35,7 +35,7 @@ reused on later runs.
 from __future__ import annotations
 
 import urllib.request
-from collections.abc import Sequence
+from functools import partial
 from pathlib import Path
 
 import matplotlib
@@ -43,7 +43,6 @@ import matplotlib
 matplotlib.use("Agg")  # headless: render to file, never open a window
 import matplotlib.pyplot as plt
 import pandas as pd
-from matplotlib.axes import Axes
 from sklearn.linear_model import LogisticRegression
 
 from ds import Settings, get_logger, get_settings, seed_everything
@@ -88,6 +87,9 @@ _TARGET = "cut"
 CUT_ORDER = ("Fair", "Good", "Very Good", "Premium", "Ideal")
 COLOR_ORDER = ("J", "I", "H", "G", "F", "E", "D")
 CLARITY_ORDER = ("I1", "SI2", "SI1", "VS2", "VS1", "VVS2", "VVS1", "IF")
+# Code -> grade name, for the labels= display mapping on the metric frames
+# and the confusion plot (the metric math stays on the int codes).
+CUT_LABELS = dict(enumerate(CUT_ORDER))
 
 _DIMENSIONS = ("x", "y", "z")  # length / width / depth, mm
 _NUMERIC_RAW = ("carat", "depth", "table", "price", *_DIMENSIONS)
@@ -186,45 +188,12 @@ def proportions_rule(df: pd.DataFrame) -> list[int]:
     return [int(code) for code in codes]
 
 
-def macro_classification_metrics(y_true: Sequence[int], y_pred: Sequence[int]) -> dict[str, float]:
-    """Classification metrics macro-averaged over the five cut classes.
-
-    The wrapper every multiclass consumer needs: ``classification_metrics``
-    defaults to ``average="binary"``, which raises beyond two classes, and
-    the ``metrics_fn`` hooks take a two-argument callable. Macro (unweighted
-    per-class mean) is the right average here — with 40% of stones graded
-    Ideal and 3% Fair, a weighted average would hide the minority classes
-    this project exists to look at.
-
-    Args:
-        y_true: Ground-truth cut codes.
-        y_pred: Predicted cut codes.
-
-    Returns:
-        A dict with ``accuracy``, ``precision``, ``recall`` and ``f1``.
-    """
-    return classification_metrics(y_true, y_pred, average="macro")
-
-
-def _named(frame: pd.DataFrame) -> pd.DataFrame:
-    """Replace integer cut codes with grade names on a metric frame's axes.
-
-    ``confusion_frame`` and ``per_class_metrics`` label rows/columns with the
-    raw integer codes; for the persisted artifacts the codes are mapped back
-    to ``Fair``..``Ideal`` by hand.
-    """
-    names = dict(enumerate(CUT_ORDER))
-    out = frame.rename(index=names)
-    if list(frame.columns) == list(range(len(CUT_ORDER))):
-        out = out.rename(columns=names)
-    return out
-
-
-def _relabel_confusion_axes(ax: Axes) -> None:
-    """Swap the confusion plot's integer tick labels for the grade names."""
-    positions = list(range(len(CUT_ORDER)))
-    ax.set_xticks(positions, labels=list(CUT_ORDER), rotation=45, ha="right")
-    ax.set_yticks(positions, labels=list(CUT_ORDER))
+# The idiom for the two-argument metrics_fn hooks beyond two classes:
+# classification_metrics defaults to average="binary", which raises at five.
+# Macro (unweighted per-class mean) is the right average here — with 40% of
+# stones graded Ideal and 3% Fair, a weighted average would hide the minority
+# classes this project exists to look at.
+macro_classification_metrics = partial(classification_metrics, average="macro")
 
 
 def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
@@ -390,8 +359,12 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
         metrics_fn=macro_classification_metrics,
     )
     comparison.to_csv(output_dir / "model_comparison.csv")
-    _named(confusion_frame(y_test.tolist(), preds)).to_csv(output_dir / "confusion_matrix.csv")
-    _named(per_class_metrics(y_test.tolist(), preds)).to_csv(output_dir / "per_class_metrics.csv")
+    confusion_frame(y_test.tolist(), preds, labels=CUT_LABELS).to_csv(
+        output_dir / "confusion_matrix.csv"
+    )
+    per_class_metrics(y_test.tolist(), preds, labels=CUT_LABELS).to_csv(
+        output_dir / "per_class_metrics.csv"
+    )
     metrics = macro_classification_metrics(y_test.tolist(), preds)
     rule_scores = macro_classification_metrics(y_test.tolist(), rule_preds)
     metrics.update({f"proportions_{name}": value for name, value in rule_scores.items()})
@@ -399,19 +372,15 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     metrics.update({f"majority_{name}": value for name, value in majority_scores.items()})
     logger.info("Held-out metrics vs baselines: %s", metrics)
 
-    # 12. Visualize. plot_confusion_matrix labels its axes with the raw
-    # integer codes; the tick labels are re-set to the grade names by hand on
-    # the returned Axes.
+    # 12. Visualize.
     fig2, ax2 = plt.subplots()
-    plot_confusion_matrix(y_test.tolist(), preds, ax=ax2)
-    _relabel_confusion_axes(ax2)
+    plot_confusion_matrix(y_test.tolist(), preds, ax=ax2, labels=CUT_LABELS)
     ax2.set_title("Cut confusion matrix — held-out split")
     fig2.savefig(output_dir / "confusion_matrix.png", bbox_inches="tight")
     plt.close(fig2)
 
     fig3, ax3 = plt.subplots()
-    plot_confusion_matrix(y_test.tolist(), preds, ax=ax3, normalize=True)
-    _relabel_confusion_axes(ax3)
+    plot_confusion_matrix(y_test.tolist(), preds, ax=ax3, normalize=True, labels=CUT_LABELS)
     ax3.set_title("Cut confusion matrix — row-normalized")
     fig3.savefig(output_dir / "confusion_matrix_normalized.png", bbox_inches="tight")
     plt.close(fig3)

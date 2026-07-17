@@ -62,6 +62,28 @@ def test_new_scaffolds_project(
     assert "a demo" in (project / "README.md").read_text()
     assert "Created" in capsys.readouterr().out
 
+    # The stub keeps the shape every real pipeline keeps: an injectable
+    # settings parameter, and the run instructions ds new itself prints.
+    stub = (project / "pipeline.py").read_text()
+    assert "def run(output_dir: Path, settings: Settings | None = None)" in stub
+    assert "ds run my_analysis" in stub
+    assert "ds run my_analysis" in (project / "README.md").read_text()
+    assert "settings=settings" in (project / "tests" / "test_pipeline.py").read_text()
+
+
+def test_new_empty_description_leaves_no_dangling_dash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "TEMPLATE_DIR", TEMPLATE_DIR)
+
+    assert cli.main(["new", "Bare"]) == 0
+
+    project = tmp_path / "projects" / "bare"
+    first_line = (project / "pipeline.py").read_text().splitlines()[0]
+    assert first_line == '"""Bare'
+    assert "—" not in (project / "README.md").read_text().splitlines()[0]
+
 
 def test_new_refuses_existing_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
