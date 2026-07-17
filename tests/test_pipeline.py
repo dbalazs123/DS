@@ -9,6 +9,7 @@ import pandas as pd
 import pytest
 
 from ds.features import (
+    ScaleParams,
     apply_collapse_categories,
     fit_one_hot_categories,
     fit_ordinal_categories,
@@ -16,7 +17,7 @@ from ds.features import (
     fit_topk_categories,
 )
 from ds.io import load_params, save_params
-from ds.pipeline import Pipeline, PipelineStep
+from ds.pipeline import FitStep, Pipeline, PipelineStep, fit_pipeline
 from ds.preprocessing import (
     apply_clip_outliers,
     apply_flag_outliers,
@@ -174,6 +175,92 @@ def test_empty_pipeline_is_identity_on_a_copy() -> None:
     out = pipeline.apply(df)
     assert out.equals(df)
     assert out is not df
+
+
+# --- Fitting a plan ---
+
+
+def test_fit_step_rejects_unknown_kind(train_df: pd.DataFrame) -> None:
+    with pytest.raises(ValueError, match="unknown pipeline step kind 'winsorize'"):
+        FitStep("winsorize", lambda df: fit_outlier_bounds(df, ["amount"]))  # type: ignore[arg-type]
+
+
+def test_fit_pipeline_matches_hand_strung_dance(train_df: pd.DataFrame) -> None:
+    # The executor must reproduce the manual fit -> apply -> fit chain
+    # exactly: same fitted parameters (same persisted payload), same output.
+    bounds = fit_outlier_bounds(train_df, ["amount"])
+    clipped = apply_clip_outliers(train_df, bounds)
+    fills = fit_impute_values(clipped, ["amount"], strategy="median")
+    manual = Pipeline(
+        steps=(
+            PipelineStep("clip_outliers", bounds),
+            PipelineStep("impute_missing", fills),
+        )
+    )
+
+    fitted = fit_pipeline(
+        train_df,
+        [
+            FitStep("clip_outliers", lambda df: fit_outlier_bounds(df, ["amount"])),
+            FitStep(
+                "impute_missing", lambda df: fit_impute_values(df, ["amount"], strategy="median")
+            ),
+        ],
+    )
+    assert fitted == manual
+    assert fitted.to_dict() == manual.to_dict()
+
+    fresh = pd.DataFrame({"amount": [9999.0, None, 11.5]})
+    assert fitted.apply(fresh).equals(manual.apply(fresh))
+    # The training frame is never mutated by fitting.
+    assert train_df["amount"].isna().sum() == 1
+
+
+def test_fit_pipeline_fits_each_step_on_the_transformed_frame(train_df: pd.DataFrame) -> None:
+    # A constant-0 fill before scaling must drag the fitted mean down: the
+    # scale step sees the *imputed* column, not the raw one.
+    fitted = fit_pipeline(
+        train_df,
+        [
+            FitStep(
+                "impute_missing",
+                lambda df: fit_impute_values(df, ["amount"], strategy="constant", fill_value=0.0),
+            ),
+            FitStep("scale_features", lambda df: fit_scale_params(df, ["amount"])),
+        ],
+    )
+    scale_params = fitted.steps[1].params
+    assert isinstance(scale_params, ScaleParams)
+    imputed_mean = float(train_df["amount"].fillna(0.0).mean())
+    raw_mean = float(train_df["amount"].mean())
+    assert scale_params.center["amount"] == pytest.approx(imputed_mean)
+    assert imputed_mean != pytest.approx(raw_mean)
+
+
+def test_fit_pipeline_rejects_fit_returning_wrong_class(train_df: pd.DataFrame) -> None:
+    with pytest.raises(TypeError, match="'impute_missing' takes ImputeValues"):
+        fit_pipeline(
+            train_df,
+            [FitStep("impute_missing", lambda df: fit_outlier_bounds(df, ["amount"]))],
+        )
+
+
+def test_fit_pipeline_empty_plan_is_empty_pipeline(train_df: pd.DataFrame) -> None:
+    fitted = fit_pipeline(train_df, [])
+    assert fitted == Pipeline(steps=())
+    assert fitted.apply(train_df).equals(train_df)
+
+
+def test_fit_pipeline_result_persists_through_ds_io(tmp_path: Path, train_df: pd.DataFrame) -> None:
+    fitted = fit_pipeline(
+        train_df,
+        [
+            FitStep("one_hot_encode", lambda df: fit_one_hot_categories(df, ["region"])),
+            FitStep("scale_features", lambda df: fit_scale_params(df, ["amount"])),
+        ],
+    )
+    path = save_params(fitted, tmp_path / "fitted.json")
+    assert load_params(path, Pipeline) == fitted
 
 
 # --- Persistence ---

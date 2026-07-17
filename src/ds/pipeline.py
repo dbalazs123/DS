@@ -12,7 +12,16 @@ pipeline composes transforms from *two* stages — :mod:`ds.preprocessing` and
 :mod:`ds.features` — and homing it in either would couple the stages to each
 other. Imports run strictly pipeline → stages, so no cycle can form.
 
-Two design points worth knowing:
+The fit side has a matching executor: :func:`fit_pipeline` runs a *plan* — an
+ordered sequence of :class:`FitStep` entries pairing a step kind with a fit
+callable — as the fit → apply → fit chain the per-pair API otherwise requires
+by hand (each parameter set is fitted on the training frame as transformed by
+the steps before it), and returns the assembled :class:`Pipeline`. The
+:class:`Pipeline` itself stays pure composition: :func:`fit_pipeline` is a
+convenience over the same ``fit_*``/``apply_*`` primitives, not a new fitting
+contract.
+
+Three design points worth knowing:
 
 - **A step records its apply form, not just its parameters.** Each step
   carries a ``kind`` naming the ``apply_*`` transform it means; this is what
@@ -25,11 +34,15 @@ Two design points worth knowing:
   persist them individually if a later training run needs them. Stateless
   transforms (e.g. :func:`ds.features.add_datetime_features`) take no fitted
   parameters and run outside the pipeline as plain calls.
+- **A fit plan is code, not data.** A :class:`FitStep` carries a callable
+  (typically a lambda closing over ``columns=``, ``strategy=``, ``k=``, …),
+  so the varying ``fit_*`` signatures need no declarative mirror and the plan
+  is not persistable — persist the *fitted* :class:`Pipeline` it produces.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -282,9 +295,95 @@ def _step_from_dict(data: Any, index: int) -> PipelineStep:
     return PipelineStep(kind=kind, params=params)
 
 
+@dataclass(frozen=True)
+class FitStep:
+    """One step of a fit plan: a step kind plus the callable that fits it.
+
+    The fit-side counterpart of :class:`PipelineStep`: where a
+    :class:`PipelineStep` carries *fitted* parameters, a :class:`FitStep`
+    carries the function that will fit them. ``fit`` is typically a lambda
+    over one of the stage ``fit_*`` helpers, closing over its keyword
+    arguments — that is how the varying signatures (``columns=``,
+    ``strategy=``, ``k=``, …) fit one plan type without a declarative mirror
+    of each:
+
+    >>> FitStep(
+    ...     "impute_missing", lambda df: fit_impute_values(df, columns=["age"], strategy="median")
+    ... )  # doctest: +SKIP
+
+    Attributes:
+        kind: The ``apply_*`` transform the fitted step will mean (same
+            vocabulary as :attr:`PipelineStep.kind`).
+        fit: A callable that learns this step's parameters from a frame.
+            :func:`fit_pipeline` calls it with the training frame as
+            transformed by the plan's earlier steps. It must return the
+            parameter class ``kind`` consumes — checked when the fitted
+            :class:`PipelineStep` is built.
+
+    Raises:
+        ValueError: If ``kind`` is not a known step kind.
+    """
+
+    kind: StepKind
+    fit: Callable[[pd.DataFrame], StepParams]
+
+    def __post_init__(self) -> None:
+        if self.kind not in _KIND_TO_CLASS:
+            raise ValueError(
+                f"unknown pipeline step kind {self.kind!r}; known kinds: {sorted(_KIND_TO_CLASS)}"
+            )
+
+
+def fit_pipeline(df: pd.DataFrame, plan: Sequence[FitStep]) -> Pipeline:
+    """Fit an ordered plan of transforms on one frame, into a :class:`Pipeline`.
+
+    Executes the fit → apply → fit chain the per-pair API requires by hand:
+    each :class:`FitStep`'s ``fit`` callable runs on the training frame *as
+    transformed by the steps before it*, and the fitted parameters are
+    assembled into a :class:`Pipeline` in plan order. One plan can therefore
+    serve both a training run (fit once, persist the result) and per-fold
+    re-fitting inside :func:`ds.evaluation.cross_validate_kfold` (via its
+    ``make_pipeline`` argument).
+
+    Write the plan as the *scoring* plan: only transforms new rows should
+    flow through, nothing fitted on the target column. When ``df`` is a
+    modeling frame (features plus target), pass explicit ``columns=`` to the
+    ``fit_*`` callables — their ``columns=None`` defaults select columns by
+    dtype and would sweep the target in.
+
+    Args:
+        df: The frame to fit on (typically the training split). Never
+            mutated.
+        plan: The :class:`FitStep` entries, in the order the fitted pipeline
+            should apply them.
+
+    Returns:
+        A :class:`Pipeline` with one fitted step per plan entry (an empty
+        pipeline for an empty plan).
+
+    Raises:
+        TypeError: If a step's ``fit`` returns a parameter class its ``kind``
+            does not consume.
+        KeyError: If a step's fit or apply needs a column the (transformed)
+            frame does not have.
+        ValueError: If a step's fit or apply rejects the (transformed) frame
+            — e.g. a wrong dtype, or a ``"flag_outliers"`` step that would
+            overwrite an existing ``<column>_outlier`` column.
+    """
+    steps: list[PipelineStep] = []
+    out = df
+    for entry in plan:
+        step = PipelineStep(kind=entry.kind, params=entry.fit(out))
+        out = step.apply(out)
+        steps.append(step)
+    return Pipeline(steps=tuple(steps))
+
+
 __all__ = [
+    "FitStep",
     "Pipeline",
     "PipelineStep",
     "StepKind",
     "StepParams",
+    "fit_pipeline",
 ]

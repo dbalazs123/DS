@@ -41,7 +41,6 @@ from ds.eda import missing_value_report, summarize
 from ds.evaluation import compare_models, regression_metrics
 from ds.features import (
     add_datetime_features,
-    apply_collapse_categories,
     fit_one_hot_categories,
     fit_scale_params,
     fit_topk_categories,
@@ -51,9 +50,8 @@ from ds.modeling.baseline import fit_baseline
 from ds.modeling.persistence import load_model, save_model
 from ds.modeling.tabular import split_features_target
 from ds.modeling.timeseries import train_test_split_by_time
-from ds.pipeline import Pipeline, PipelineStep
+from ds.pipeline import FitStep, fit_pipeline
 from ds.preprocessing import (
-    apply_clip_outliers,
     drop_duplicate_rows,
     fit_impute_values,
     fit_outlier_bounds,
@@ -181,26 +179,32 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     train = train.drop(columns=["pickup"])
     test = test.drop(columns=["pickup"])
 
-    # 6. Fit on train, apply to both. Each parameter set is fitted on the
-    # train frame as transformed by the steps before it, then the whole
-    # ordered chain is applied through one Pipeline.
-    bounds = fit_outlier_bounds(train, columns=["distance", "duration_min"])
-    clipped = apply_clip_outliers(train, bounds)
-    zones = fit_topk_categories(clipped, columns=_ZONES, k=_ZONE_TOP_K)
-    collapsed = apply_collapse_categories(clipped, zones)
-    fills = fit_impute_values(collapsed, columns=_CATEGORICAL + _ZONES, strategy="most_frequent")
-    vocabulary = fit_one_hot_categories(collapsed, columns=_CATEGORICAL + _ZONES)
-    scaling = fit_scale_params(collapsed, columns=_NUMERIC_FEATURES)
-
-    scoring = Pipeline(
-        steps=(
-            PipelineStep("clip_outliers", bounds),
-            PipelineStep("collapse_categories", zones),
-            PipelineStep("impute_missing", fills),
-            PipelineStep("one_hot_encode", vocabulary),
-            PipelineStep("scale_features", scaling),
-        )
-    )
+    # 6. Fit on train, apply to both. fit_pipeline runs the ordered
+    # fit → apply → fit chain (each parameter set fitted on the train frame
+    # as transformed by the steps before it) that this project used to
+    # hand-string — friction item 5.
+    plan = [
+        FitStep(
+            "clip_outliers",
+            lambda df: fit_outlier_bounds(df, columns=["distance", "duration_min"]),
+        ),
+        FitStep(
+            "collapse_categories",
+            lambda df: fit_topk_categories(df, columns=_ZONES, k=_ZONE_TOP_K),
+        ),
+        FitStep(
+            "impute_missing",
+            lambda df: fit_impute_values(
+                df, columns=_CATEGORICAL + _ZONES, strategy="most_frequent"
+            ),
+        ),
+        FitStep(
+            "one_hot_encode",
+            lambda df: fit_one_hot_categories(df, columns=_CATEGORICAL + _ZONES),
+        ),
+        FitStep("scale_features", lambda df: fit_scale_params(df, columns=_NUMERIC_FEATURES)),
+    ]
+    scoring = fit_pipeline(train, plan)
     train = scoring.apply(train)
     test = scoring.apply(test)
     assert_no_nulls(train)

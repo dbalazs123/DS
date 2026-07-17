@@ -18,11 +18,12 @@ working set of the most-reached-for helpers. Built out so far:
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
 | Feature | `ds.features` | `add_datetime_features` (incl. `_hour`), `one_hot_encode`, `ordinal_encode`, `collapse_categories` (top-k + "other"), `scale_features`, `bin_column` + split-safe pairs `fit_one_hot_categories`/`apply_one_hot_encode`, `fit_ordinal_categories`/`apply_ordinal_encode`, `fit_topk_categories`/`apply_collapse_categories`, `fit_scale_params`/`apply_scale_features` |
 | Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `train_test_split_random` (shuffled, optionally stratified), `fit_baseline` (mean / majority / naive-last / seasonal-naive), `save_model`/`load_model` (joblib persistence), `count_tokens` |
-| Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics`, `cross_validate_by_time` (rolling origin), `cross_validate_kfold` (optionally stratified), `compare_models` |
+| Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics`, `cross_validate_by_time` (rolling origin), `cross_validate_kfold` (optionally stratified; re-fits a transform pipeline per fold via `make_pipeline`), `compare_models` |
 | Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_confusion_matrix`, `plot_residuals`, `plot_model_comparison` |
 
 Supporting: `ds.pipeline` (a persistable fit-once/apply-many `Pipeline` over
-the `fit_*`/`apply_*` pairs), `ds` CLI (`ds version`, `ds new`, `ds run`), a
+the `fit_*`/`apply_*` pairs, fitted in one call from a `FitStep` plan via
+`fit_pipeline`), `ds` CLI (`ds version`, `ds new`, `ds run`), a
 per-stage docs Guide with cross-stage recipes, a `test-extras` CI job,
 single-sourced version, and an extended project template. `projects/` holds the
 synthetic worked example (`_example`) and two **real-data** projects:
@@ -40,8 +41,8 @@ extending recent momentum. Verdicts, and what they imply:
   library work") had never run, while eight consecutive PRs invested in
   supply-side library polish. **Consequence:** every library addition should
   now be pulled by a project need, not pushed from a candidate list. The
-  friction backlogs below are the queue (currently `titanic` item 9 — its
-  items 6–8 and the whole `nyc_taxis` list are served).
+  friction backlogs below are the queue (currently **empty** — both lists are
+  fully served, so the next step is regenerating demand, not building).
 - **Fit-once / score-later** — *stopped one step short of its own goal;
   since closed (P2).* Fitted parameters and the `Pipeline` persist as strict
   JSON, but at evaluation time the fitted **model** could not be persisted at
@@ -130,14 +131,15 @@ orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
   majority class (0.615 / 0.0). Per the demand-first rule the project
   promotes nothing itself; its friction list is the new backlog below.
 
-**Next up:** the `titanic` backlog's items 6–8 are served (each promoted and
-consumed back by the project in the same change); item 9 — per-fold
-re-fitting of the transform chain — is the queue. It is deliberately *not*
-another batch item: it reopens the settled pure-composition decision on
-`ds.pipeline` (the fit-side gap items 5 and 9 both point at, whose
-"second project repeats the dance" trigger has fired) and deserves its own
-design pass. Deprioritized until a project pulls them: more EDA helpers,
-more viz, more cookbook recipes, more CLI.
+**Next up:** both friction backlogs are fully served — item 9 got its design
+pass (`fit_pipeline` + per-fold re-fitting via `make_pipeline`; the amended
+pure-composition rationale is recorded under settled decisions below) and
+closed item 5 with it. The queue is **empty**: per the demand-first rule the
+next step is a fresh demand loop (a third real-data project that stresses a
+still-untouched surface — e.g. the time-series side, where
+`cross_validate_by_time` and the temporal helpers have only one consumer),
+not another supply-side batch. Deprioritized until a project pulls them:
+more EDA helpers, more viz, more cookbook recipes, more CLI.
 
 ## Friction backlog (from `projects/nyc_taxis`)
 
@@ -163,13 +165,14 @@ Demand-driven candidates, in observed-pain order:
    their place: vs a boroughs-only variant on the same held-out window, MAE
    2.62 → 2.26 (−14%), r² 0.729 → 0.765 (k=15, asserted in the project's
    end-to-end test).
-5. **Pipeline fit-side observation** (for the settled pure-composition
-   decision below): assembling the scoring pipeline required manually fitting
-   each parameter set on a progressively transformed train frame
-   (fit → apply → fit next). Pure composition stays settled for now, but if a
-   second project repeats this dance, a declarative fit-a-plan convenience
-   earns a fresh look. **Trigger fired:** `titanic` repeated the dance
-   verbatim (five fit/apply pairs) — see item 9 below.
+5. ~~**Pipeline fit-side observation**~~ — **resolved with item 9** (the
+   "second project repeats this dance" trigger fired: `titanic` repeated the
+   fit → apply → fit chain verbatim, five fit/apply pairs):
+   `ds.pipeline.fit_pipeline` executes an ordered plan of `FitStep` entries
+   as exactly that chain and returns the assembled `Pipeline`. Both projects
+   replaced their hand-strung dance with a plan; persisted scoring pipelines
+   and held-out metrics came out byte-identical. The amended
+   pure-composition rationale is recorded under settled decisions below.
 
 ## Friction backlog (from `projects/titanic`)
 
@@ -203,14 +206,22 @@ list so item references stay unambiguous; in observed-pain order:
    with and without stratification). The drift is sampling variance in
    *which* positives land in a fold, not in how many, so the project's CV
    assertions were deliberately not tightened.
-9. **Cross-validation cannot re-fit the transform chain per fold.**
-   `make_model` rebuilds the estimator per fold, but the frame handed to
-   `cross_validate_kfold` already carries transforms fitted on the *whole*
-   training split — every fold's test rows influenced the imputation and
-   scaling statistics its train rows were transformed with. Doing it
-   properly means re-fitting the fit → apply → fit chain inside each fold,
-   which nothing in `ds.pipeline` can express: the same fit-side gap as
-   item 5, whose "second project repeats this dance" trigger has now fired.
+9. ~~**Cross-validation cannot re-fit the transform chain per fold.**~~ —
+   **resolved, with one honest finding**: `cross_validate_kfold` takes a
+   `make_pipeline` factory (the `make_model` twin — typically
+   `lambda frame: fit_pipeline(frame, plan)` with the training run's own
+   plan); each fold fits a fresh pipeline on its training rows only and
+   applies it to both halves. `titanic` now cross-validates the *raw*
+   training split with the same five-step plan it fits the scoring pipeline
+   from. The finding: the leak was real in protocol but its measured effect
+   here rounds to zero — the per-fold statistics genuinely change (fold age
+   medians 28.0–29.0 vs 28.5 whole-train, fare fences 63.3–66.6 vs 65.7) yet
+   not one of the 712 fold predictions flips, because logistic regression
+   absorbs small affine shifts in imputation/scaling, so the per-fold CV
+   metrics came out identical. As with item 8, the honest result is recorded
+   rather than a manufactured delta; the protocol is now sound either way.
+   `cross_validate_by_time` deliberately does *not* grow the parameter until
+   a project pulls it — it currently has no consumer (demand first).
 
 Where the library did *not* fight: the classification metric/plot surface
 itself (`classification_metrics`, `confusion_frame`, `per_class_metrics`,
@@ -264,7 +275,7 @@ run or another process" — was unmet without persisting the *model* too; P2
 extended the story to the estimator via `ds.modeling.persistence` (JSON stays
 the format for parameters, joblib is used only for the model).
 
-### Composable fit/apply pipeline *(stands; one observation logged)*
+### Composable fit/apply pipeline *(amended: the fit side gained an executor)*
 
 `ds.pipeline.Pipeline` holds an ordered tuple of `PipelineStep`s (fitted
 parameters + the `apply_*` kind they mean), applies them in order, and
@@ -273,9 +284,27 @@ top-level `ds.pipeline` module (composes two stages; imports run strictly
 pipeline → stages); a closed `StepParams` union + `StepKind` literal under
 `mypy --strict`; steps tagged by *kind* because `OutlierBounds` serves two
 apply forms; train-time-only parameters stay out (scoring rows have no
-target). The per-pair API stays the primitive; the pipeline is pure
-composition — see friction item 5 for the observation that could reopen the
-fit side.
+target). The per-pair API stays the primitive.
+
+**Amendment (friction items 5 + 9, the promised design pass):** "the
+pipeline is pure composition" was the fit-side half of the original
+decision, and its stated trigger — a second project repeating the manual
+fit → apply → fit dance — fired. Resolution: `Pipeline` *remains* pure
+composition (construction, application and persistence are unchanged — a
+pipeline still holds only fitted parameters), and the dance moved into
+`fit_pipeline`, an executor over the same per-pair primitives: it runs an
+ordered plan of `FitStep` entries (a step kind plus a fit callable) and
+returns the assembled `Pipeline`. Two alternatives were weighed and
+rejected: a fully declarative fit-spec (one dataclass per `fit_*` form,
+making plans persistable data) would mirror every fit signature and drift
+with them, and nothing demanded persisting *plans* — only fitted pipelines;
+solving only the CV leak (a factory parameter alone) would have left item
+5's dance in both projects. A `FitStep` carries a callable closing over the
+varying keyword arguments (`columns=`, `strategy=`, `k=`), so the closed
+unions stay closed and `mypy --strict` types the plan without a parallel
+spec hierarchy. The same mechanism is what `cross_validate_kfold`'s
+`make_pipeline` factory re-runs inside each fold, so one plan serves the
+training run and leak-free cross-validation.
 
 ### API discoverability: import by stage *(stands)*
 
