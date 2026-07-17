@@ -77,14 +77,16 @@ more detail).
 
 ## Roadmap
 
-[`ROADMAP.md`](ROADMAP.md) carries the plan of record (P1–P10 all done; P10
-ran the fifth demand loop — `projects/sms_spam`, the first text project,
-built to consume the `nlp` extra's `count_tokens` and stress the text gaps
-by absence — refilling the queue with items 18–21: no vectorization step
-kind in the pipeline vocabulary, `count_tokens`' per-call degradation
-stalling its very first consumer, a silent boundary-parse failure only an
-out-of-band row count caught, and no text helpers in the features stage;
-the next step is serving that backlog in observed-pain order), a goal
+[`ROADMAP.md`](ROADMAP.md) carries the plan of record (P1–P11 all done; P11
+served the `sms_spam` backlog, items 18–21, in observed-pain order:
+`count_tokens` now resolves its counting path once per process — cached,
+success or failure — so the vocabulary-unreachable stall that hit the
+extra's first consumer is one ~0.4 s probe instead of ~35 minutes, and the
+project's hand-rolled guard is deleted; item 18 resolved by documenting the
+"model-side transforms live in the estimator" convention as `ds.pipeline`'s
+fourth design point rather than designing a vectorize step kind from one
+consumer; items 20/21 struck with second-project triggers recorded. The
+queue is empty — the next step is a sixth demand loop), a goal
 evaluation of the whole toolkit, the friction backlogs from the real-data
 projects, and the settled-decision rationales this file's notes point to.
 Read it before starting new library work — and note its

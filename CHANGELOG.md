@@ -7,6 +7,38 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- The `sms_spam` friction backlog served (P11 — `ROADMAP.md` items 18–21 in
+  observed-pain order: one built, one resolved by documentation, two struck;
+  the served item dogfooded by `projects/sms_spam` in the same change):
+  - `ds.modeling.nlp.count_tokens` now resolves which counting path is live
+    **once per process** per `model` (item 19): the encoding probe is
+    memoized, caching success *and* failure, so with tiktoken installed but
+    its vocabulary endpoint unreachable only the first call pays the failed
+    download attempt (previously ~0.4 s on *every* call — a ~35-minute stall
+    over the sms_spam project's 5,171 messages, hit live in CI-like
+    sandboxes) and a process never mixes BPE and whitespace counts mid-run.
+    The other candidate shape recorded for the item — exposing the probe —
+    was deliberately not built: with the stall gone, no consumer needs to
+    pick a counter or see which path ran. `projects/sms_spam` deleted its
+    hand-rolled `_resolve_token_counter` guard and calls the library
+    directly; no-extras artifacts verified byte-identical (sha256), held-out
+    metrics unchanged (accuracy 0.968 / spam F1 0.864). Both paths are
+    pinned by deterministic fake-`tiktoken` tests that need no network and
+    hold in the no-extras and `--extra all` CI jobs alike.
+  - Item 18 (no vectorization step kind in the `ds.pipeline` vocabulary) —
+    **resolved by documenting the convention, not building from one
+    consumer**, per the item's own warning: model-side transforms (a
+    transform whose fitted state manufactures its column space, like a text
+    vectorizer's learned sparse vocabulary) live inside the estimator and
+    persist via `save_model`, while the ds `Pipeline` carries the
+    frame-shaped steps around it. Recorded as `ds.pipeline`'s fourth
+    module-docstring design point and a Guide paragraph; a second text
+    project decides whether a first-class vectorize step earns a build.
+  - Items 20 (an `assert_row_count`-style boundary check) and 21 (text
+    feature helpers) — **struck, not built**: a one-line row-count guard and
+    two well-documented count lines, each observed once, are below the
+    helper bar (the item-13/15 precedent); the second-project triggers are
+    recorded in `ROADMAP.md`.
 - `projects/sms_spam`: fifth **real-data** project (P10 — the fifth run of
   the demand loop, and the first **text** one). Flags the 5,574 labelled
   messages of the SMS Spam Collection (~13% spam; single headerless TSV

@@ -43,9 +43,9 @@ extending recent momentum. Verdicts, and what they imply:
   library work") had never run, while eight consecutive PRs invested in
   supply-side library polish. **Consequence:** every library addition should
   now be pulled by a project need, not pushed from a candidate list. The
-  friction backlogs below are the queue (the `nyc_taxis`, `titanic`, `flights`
-  and `diamonds` lists are fully served; the fifth demand loop — `sms_spam` —
-  regenerated the queue with items 18–21).
+  friction backlogs below are the queue (all five lists — `nyc_taxis`,
+  `titanic`, `flights`, `diamonds` and `sms_spam` — are fully dispatched;
+  P11 emptied the queue, so the next step is a sixth demand loop).
 - **Fit-once / score-later** — *stopped one step short of its own goal;
   since closed (P2).* Fitted parameters and the `Pipeline` persist as strict
   JSON, but at evaluation time the fitted **model** could not be persisted at
@@ -256,11 +256,39 @@ orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
   through. Per the demand-first rule the project promotes nothing itself;
   its friction list is the new backlog below.
 
-**Next up:** the fifth demand loop refilled the queue — serve the `sms_spam`
-backlog (items 18–21) in observed-pain order, each item's own caveats
-weighed. Item 9's parked question —
+- **P11 — serve the `sms_spam` backlog: DONE.** Items 18–21 in observed-pain
+  order — one served, one resolved by documentation, two struck (each
+  rationale inline in the backlog below):
+  - `count_tokens` path memoization (item 19, served first as the backlog's
+    recorded strongest candidate) — the encoding probe is resolved once per
+    process per `model` and the outcome cached, success *and* failure, so
+    the tiktoken-installed/vocabulary-unreachable case pays one failed
+    download attempt instead of one per message (~35 minutes over the
+    project's 5,171 messages → one ~0.4 s probe) and a run never mixes
+    counting paths. The other recorded candidate shape — exposing the probe
+    — was deliberately not built: with the stall gone no consumer needs to
+    hold a counter callable or see which path ran. Dogfood proof by
+    deletion: `projects/sms_spam` dropped `_resolve_token_counter` and calls
+    the library directly, no-extras artifacts byte-identical (sha256) and
+    the vocabulary-blocked `--extra all` run (the live repro) down from a
+    ~35-minute stall to seconds. Both paths pinned by deterministic
+    fake-module tests that need no network and hold in both CI jobs.
+  - Item 18 (no vectorization step kind) — **resolved by documenting the
+    "model-side transforms live in the estimator" convention**, not
+    building from one consumer (see the backlog): now `ds.pipeline`'s
+    fourth module-docstring design point and a Guide paragraph.
+  - Items 20 (boundary row-count check) and 21 (text feature helpers) —
+    **struck, not built** (see the backlog); both second-project triggers
+    recorded.
+
+**Next up:** the `sms_spam` backlog is fully dispatched (one built, one
+documented, two struck) and the queue is empty again — the next step is a
+**sixth demand loop**: a new real-data project chosen by the P8 rule (grep
+which surfaces still lack a real consumer — imputation beyond titanic's
+severity and the item-13/15/20/21 second-project triggers are the open
+watch-list) to regenerate the backlog. Item 9's parked question —
 `cross_validate_by_time(make_pipeline=...)` — stays parked: the trigger has
-still not fired (this project's CV is k-fold, not rolling-origin).
+still not fired (sms_spam's CV is k-fold, not rolling-origin).
 Deprioritized until a project pulls them: more EDA helpers, more cookbook
 recipes, more CLI.
 
@@ -516,61 +544,66 @@ five classes; and the whole persistence story (`fit_pipeline` →
 The fifth run of the demand loop — the first text one. Numbering continues
 from the `diamonds` list; in observed-pain order:
 
-18. **The pipeline's step vocabulary cannot hold the fitted heart of a text
-    pipeline.** The TF-IDF vectorizer is the one genuinely *fitted* text
-    transform this project has, and it cannot be a `PipelineStep`: the
-    closed `StepKind` vocabulary has no vectorization kind, so the fitted
-    vocabulary + idf weights persist inside the sklearn model joblib while
-    the persisted ds "scoring pipeline" holds only a `char_count` scaler —
-    reloading the scoring pipeline alone cannot score a message, and the
-    fit-once/apply-many story splits across two artifacts with different
-    serialization formats (strict JSON vs joblib). The pain is real but the
-    candidate shape is genuinely open, and the honest caveat is structural:
-    every existing step is DataFrame-in/DataFrame-out over named columns,
-    while a vectorizer maps one text column to a sparse matrix with
-    thousands of learned columns — forcing that through the dense
-    frame-to-frame contract would be dishonest about cost, and wrapping the
-    sklearn object whole would make the strict-JSON `save_params` story
-    carry a pickle. Don't design this from one consumer: record it, and let
-    a second text project show whether the recurring need is a vectorize
-    step kind, a documented "model-side transforms live in the estimator"
-    convention (what this project does), or something else.
-19. **`count_tokens`' graceful degradation is per-call and invisible to the
-    caller.** With tiktoken *installed* but its vocabulary endpoint
-    unreachable (this sandbox's proxy; any offline machine with extras),
-    every call re-attempts the download before falling back — ~0.4 s
-    measured per call, which turns mapping the 5,171 messages into a
-    ~35-minute stall; the extras run of this project hung exactly there.
-    And a returned count carries no signal about which path produced it, so
-    a caller cannot guard the stall without reproducing the library's own
-    probe — which is what the project does (`_resolve_token_counter`: try
-    the encoding once, fall back wholesale). Candidate shapes: memoize the
-    failed-encoding outcome inside `count_tokens` so the fallback is only
-    slow once, and/or expose the probe so consumers can pick a counter once
-    per run. Observed once, but this is the extra's *first* consumer and
-    the pain found it immediately — the strongest candidate for the next
-    serving pass.
-20. **A silently-wrong boundary parse had to be caught out-of-band.** The
-    raw TSV is headerless and its double quotes are message text; under
-    pandas' default quoting the read *succeeds* with 5,572 rows instead of
-    5,574 — two messages swallowed into a neighbour, one with an embedded
-    newline — and every downstream validation passes on the corrupted
-    frame. `load_raw` forwarding pandas kwargs (`quoting=csv.QUOTE_NONE`)
-    fixes the parse, but nothing in `ds.validation` can express the check
-    that *caught* it (an expected row count / shape assertion against the
-    published dataset size — this run compared `wc -l` by hand). Candidate
-    shape: an `assert_row_count(df, expected)`-style boundary check.
-    Observed once; a one-line `if len(df) != ...: raise` is easy to
-    hand-roll, so the bar question is whether a second project meets the
-    same silent-parse class of failure.
-21. **The features stage has no text helpers.** `char_count` and
-    `token_count` are hand-rolled project code — two well-documented lines
-    each, below the helper bar individually (the item-13/15 precedent), but
-    they are exactly the first two columns any text project engineers.
-    Won't build until a second text project hand-rolls the same columns and
-    shows which shape recurs (a `text_features(df, column)` frame helper vs
-    more single-column counters alongside `count_tokens`). The project
-    keeps its two lines.
+18. ~~**The pipeline's step vocabulary cannot hold the fitted heart of a
+    text pipeline.**~~ — **resolved in P11 by documenting the convention,
+    not building** — the item's own warning ("don't design this from one
+    consumer") ruled a vectorize step kind out. The pain stands as recorded:
+    the TF-IDF vectorizer is the project's one genuinely fitted text
+    transform and the closed `StepKind` vocabulary cannot hold it, so the
+    fitted state splits across two artifacts (strict-JSON scoring pipeline,
+    model joblib). But both build shapes stay dishonest with one consumer's
+    evidence: every existing step maps named DataFrame columns to named
+    DataFrame columns, while a vectorizer *manufactures* its column space —
+    thousands of learned sparse columns — so forcing it through the dense
+    frame contract would hide the real cost, and wrapping the sklearn
+    object whole would smuggle a pickle into the strict-JSON `save_params`
+    story. What sms_spam does is therefore now the *documented* convention
+    rather than an accident: model-side transforms live in the estimator
+    and persist via `save_model` — recorded as `ds.pipeline`'s fourth
+    module-docstring design point and in the Guide's pipeline section, the
+    item-17 precedent of resolving by documenting where the next consumer
+    will actually look. Revisit only when a second text project shows
+    whether the convention suffices or a first-class vectorize step kind
+    earns a build.
+19. ~~**`count_tokens`' graceful degradation is per-call and invisible to
+    the caller.**~~ — **resolved in P11** (served first, as the recorded
+    strongest candidate): `count_tokens` now resolves which counting path
+    is live **once per process** per `model` — a memoized probe that caches
+    success *and* failure — so with tiktoken installed but its vocabulary
+    endpoint unreachable only the first call pays the failed download
+    attempt (~0.4 s once, not × 5,171 messages ≈ 35 minutes), and a process
+    never mixes counting paths mid-run even if connectivity changes. Of the
+    two recorded candidate shapes, memoizing inside `count_tokens` was
+    built and exposing the probe was not: with the stall gone, a consumer
+    has no remaining reason to hold a counter callable, and none needs to
+    *see* which path ran (the column is descriptive-only either way — the
+    half-earned-verdict note below still governs the modeling path).
+    Dogfood proof by deletion: sms_spam's hand-rolled
+    `_resolve_token_counter` guard is gone, the pipeline calls
+    `count_tokens` directly, no-extras artifacts byte-identical (sha256),
+    and the `--extra all` run in the vocabulary-blocked sandbox — the live
+    item-19 repro — now completes in seconds where it stalled ~35 minutes.
+    Both paths are pinned by deterministic tests (a fake tiktoken module in
+    `sys.modules`, no network), valid in the no-extras and `--extra all` CI
+    jobs alike.
+20. ~~**A silently-wrong boundary parse had to be caught out-of-band.**~~ —
+    **struck in P11, not built**, as the item's own bar question
+    anticipated: the check that caught the misparse is a one-line
+    `if len(df) != expected: raise` against the published dataset size,
+    observed once — an `assert_row_count` would wrap a single comparison
+    behind a new name (the item-13/15 precedent, below the helper bar).
+    The silent-parse *class* of failure is real and stays recorded; the
+    trigger is a second project meeting a silently-wrong boundary read that
+    only an expected-shape check catches, which will also show which shape
+    recurs (a row-count assert vs a more general expected-shape check).
+21. ~~**The features stage has no text helpers.**~~ — **struck in P11, not
+    built**, exactly as the item recorded for itself: `char_count` and
+    `token_count` are two well-documented lines each, hand-rolled in one
+    project (the item-13/15 precedent again). The trigger stays recorded: a
+    second text project hand-rolling the same columns decides both the bar
+    and the shape (a `text_features(df, column)` frame helper vs more
+    single-column counters alongside `count_tokens`). The project keeps its
+    two lines.
 
 Notes from the same run, for the record:
 

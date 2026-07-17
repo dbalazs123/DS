@@ -307,15 +307,23 @@ order survives the round-trip. Loading a stale or hand-edited file — an
 unknown step kind, a malformed nested payload — fails with an error naming
 the offending step.
 
-Two things deliberately stay **out** of a pipeline: train-time-only
+Three things deliberately stay **out** of a pipeline: train-time-only
 parameters (anything fitted on the target column — scoring rows have no
-target to clip or fill; save those individually for the next training run)
-and stateless transforms like `add_datetime_features`, which take no fitted
-parameters and run as plain calls before or after `apply`. The worked example
-(`projects/_example/pipeline.py`) draws exactly this line: one saved
-`Pipeline` (impute region → encode region → scale calendar features) scores
-rows that did not exist at fit time, while the target-column bounds and fill
-are persisted separately.
+target to clip or fill; save those individually for the next training run),
+stateless transforms like `add_datetime_features`, which take no fitted
+parameters and run as plain calls before or after `apply`, and **model-side
+transforms** — anything whose fitted state manufactures its own column space,
+like a text vectorizer turning one string column into thousands of learned
+sparse columns. Every step kind maps named columns to named columns, and
+forcing a sparse vocabulary through that dense frame contract would be
+dishonest about cost, so such transforms live inside the estimator (e.g. a
+`TfidfVectorizer` in a scikit-learn pipeline) and persist with
+`save_model`/`load_model` — the convention `projects/sms_spam` runs: the ds
+`Pipeline` scales `char_count`, the model joblib carries the vocabulary. The
+worked example (`projects/_example/pipeline.py`) draws the first line
+exactly: one saved `Pipeline` (impute region → encode region → scale calendar
+features) scores rows that did not exist at fit time, while the target-column
+bounds and fill are persisted separately.
 
 #### Fit the whole plan in one call
 
@@ -409,6 +417,13 @@ from ds.modeling.nlp import count_tokens
 
 count_tokens("how many tokens is this?")
 ```
+
+Which path is live is resolved once per process and cached — success or
+failure — so with tiktoken installed but its vocabulary endpoint unreachable
+only the *first* call pays the failed download attempt, and a run never mixes
+counts from different paths. The counts are still environment-dependent
+across machines, so treat the column as descriptive: `projects/sms_spam`
+keeps it out of the modeling path for exactly that reason.
 
 ### Evaluate — `ds.evaluation`
 

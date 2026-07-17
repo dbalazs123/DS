@@ -59,11 +59,13 @@ it surfaced in the library is recorded as the backlog in
   exploration artifacts; the model reads the TF-IDF text features plus
   `char_count`, which is deterministic everywhere. Tests assert structure and
   baselines-beaten, never token-dependent values. One more wrinkle the first
-  real consumer surfaced: the degradation is *per call* — with tiktoken
-  installed but its vocabulary unreachable, every call re-attempts the
-  download (~0.4 s), a ~35-minute stall over 5,000 messages — so the
-  pipeline probes the accurate path once (`_resolve_token_counter`) and
-  falls back wholesale. Recorded as `ROADMAP.md` item 19.
+  real consumer surfaced: the degradation used to be *per call* — with
+  tiktoken installed but its vocabulary unreachable, every call re-attempted
+  the download (~0.4 s), a ~35-minute stall over 5,000 messages — which this
+  pipeline originally guarded with a hand-rolled probe
+  (`_resolve_token_counter`). Recorded as `ROADMAP.md` item 19 and served in
+  P11: `count_tokens` now resolves its path once per process, so the guard is
+  deleted and the pipeline calls the library directly.
 - **The fitted state is split across two artifacts.** The persisted ds
   `Pipeline` holds the one step the closed vocabulary can express — the
   `char_count` scaler — while the TF-IDF vocabulary persists inside the model

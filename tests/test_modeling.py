@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import sys
+from collections.abc import Iterator, Sequence
 from pathlib import Path
+from types import ModuleType
 
 import matplotlib as mpl
 import pandas as pd
@@ -431,6 +433,66 @@ def test_count_tokens_matches_tiktoken() -> None:
         pytest.skip(f"tiktoken vocabulary unavailable: {exc}")
     text = "Tokenization isn't the same as splitting on spaces."
     assert count_tokens(text) == len(encoding.encode(text))
+
+
+@pytest.fixture()
+def _fresh_encoding_cache() -> Iterator[None]:
+    """Isolate the per-process encoding cache around a test.
+
+    The memoization tests below install a fake ``tiktoken`` module, so the
+    cached outcome must not leak into (or from) tests that use the real one.
+    """
+    from ds.modeling import nlp
+
+    nlp._resolve_encoding.cache_clear()
+    yield
+    nlp._resolve_encoding.cache_clear()
+
+
+@pytest.mark.usefixtures("_fresh_encoding_cache")
+def test_count_tokens_memoizes_failed_encoding_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The item-19 stall: tiktoken installed but its vocabulary unreachable.
+    # The failed probe must run once per process, not once per call — and the
+    # fake module makes the test deterministic whether or not the real
+    # tiktoken is installed (it shadows it) or the network is up.
+    probes: list[str] = []
+
+    def failing_get_encoding(name: str) -> None:
+        probes.append(name)
+        raise OSError("vocabulary endpoint unreachable")
+
+    fake = ModuleType("tiktoken")
+    setattr(fake, "get_encoding", failing_get_encoding)  # noqa: B010
+    monkeypatch.setitem(sys.modules, "tiktoken", fake)
+
+    assert count_tokens("hello world") == 2  # whitespace fallback
+    assert count_tokens("one two three") == 3
+    assert probes == ["cl100k_base"]  # probed exactly once across both calls
+
+
+@pytest.mark.usefixtures("_fresh_encoding_cache")
+def test_count_tokens_reuses_resolved_encoding(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Success is memoized too: the encoding is resolved once and reused, and
+    # the counts come from it rather than the whitespace fallback.
+    probes: list[str] = []
+
+    class FakeEncoding:
+        def encode(self, text: str) -> list[int]:
+            # One more token than the whitespace estimate, so a fallback
+            # (which would return len(text.split())) cannot pass by accident.
+            return list(range(len(text.split()) + 1))
+
+    def fake_get_encoding(name: str) -> FakeEncoding:
+        probes.append(name)
+        return FakeEncoding()
+
+    fake = ModuleType("tiktoken")
+    setattr(fake, "get_encoding", fake_get_encoding)  # noqa: B010
+    monkeypatch.setitem(sys.modules, "tiktoken", fake)
+
+    assert count_tokens("hello world") == 3
+    assert count_tokens("one two three") == 4
+    assert probes == ["cl100k_base"]
 
 
 def test_set_theme_applies_palette() -> None:
