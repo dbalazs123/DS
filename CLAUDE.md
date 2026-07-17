@@ -29,7 +29,8 @@ in the **same** change.
 ├── projects/              # analyses/experiments (_example = synthetic teaching
 │                          #   reference; nyc_taxis = real-data fare prediction;
 │                          #   titanic = real-data survival classification;
-│                          #   flights = real-data passenger forecasting)
+│                          #   flights = real-data passenger forecasting;
+│                          #   diamonds = real-data cut grading, multiclass)
 ├── templates/project/     # copier template for new projects
 ├── notebooks/             # exploratory notebooks
 ├── data/                  # git-ignored: raw/ interim/ processed/
@@ -75,13 +76,13 @@ more detail).
 
 ## Roadmap
 
-[`ROADMAP.md`](ROADMAP.md) carries the plan of record (P1–P7 all done; P7
-served the `flights` backlog — `ds.viz.plot_series`, the
-`add_datetime_features` feature selection with its opt-in elapsed-months
-trend counter, and item 13 struck with a recorded won't-build rationale —
-so the queue is empty until a fourth demand loop regenerates it), a goal
-evaluation of the whole toolkit, the friction backlogs from the real-data
-projects, and the settled-decision rationales this file's notes point to.
+[`ROADMAP.md`](ROADMAP.md) carries the plan of record (P1–P8 all done; P8
+ran the fourth demand loop — `projects/diamonds`, the first multiclass
+project, which earned the ordinal-encoding pair, `bin_column`,
+`plot_outliers` and the 5-class metric surface their first real consumers
+and regenerated the queue as backlog items 14–17), a goal evaluation of the
+whole toolkit, the friction backlogs from the real-data projects, and the
+settled-decision rationales this file's notes point to.
 Read it before starting new library work — and note its
 ordering rule: new library work should trace to a friction item from a real
 project, not a brainstormed candidate list.
