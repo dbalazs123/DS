@@ -26,9 +26,9 @@ the `fit_*`/`apply_*` pairs, fitted in one call from a `FitStep` plan via
 `fit_pipeline`), `ds` CLI (`ds version`, `ds new`, `ds run`), a
 per-stage docs Guide with cross-stage recipes, a `test-extras` CI job,
 single-sourced version, and an extended project template. `projects/` holds the
-synthetic worked example (`_example`) and three **real-data** projects:
-`nyc_taxis` (regression), `titanic` (classification) and `flights`
-(forecasting).
+synthetic worked example (`_example`) and four **real-data** projects:
+`nyc_taxis` (regression), `titanic` (binary classification), `flights`
+(forecasting) and `diamonds` (multiclass classification).
 
 ## Goal evaluation (2026-07)
 
@@ -43,8 +43,8 @@ extending recent momentum. Verdicts, and what they imply:
   supply-side library polish. **Consequence:** every library addition should
   now be pulled by a project need, not pushed from a candidate list. The
   friction backlogs below are the queue (the `nyc_taxis`, `titanic` and
-  `flights` lists are all fully served; regenerating the queue takes a
-  fourth demand loop).
+  `flights` lists are fully served; the fourth demand loop — `diamonds` —
+  regenerated the queue with items 14–17).
 - **Fit-once / score-later** — *stopped one step short of its own goal;
   since closed (P2).* Fitted parameters and the `Pipeline` persist as strict
   JSON, but at evaluation time the fitted **model** could not be persisted at
@@ -178,12 +178,38 @@ orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
     days/finer variant stays unbuilt until a project pulls it.
   - Item 13 — **struck, not built** (see the backlog).
 
-**Next up:** the `flights` backlog is fully served and the queue is empty —
-per the demand-first rule the next step is a fourth demand loop (a new
-real-data project stressing an untouched surface), not more supply-side
-polish. Item 9's parked question — `cross_validate_by_time(make_pipeline=...)`
-— stays parked: the trigger has still not fired. Deprioritized until a
-project pulls them: more EDA helpers, more cookbook recipes, more CLI.
+- **P8 — regenerate demand with a fourth real-data project (multiclass):
+  DONE.** `projects/diamonds` grades the cut of the 53,940 classic ggplot2
+  diamonds (seaborn-data mirror) into the five ordered classes Fair < Good <
+  Very Good < Premium < Ideal — chosen, after grepping which helpers still
+  had no real consumer, for quirks that pull several untouched surfaces at
+  once. First real consumers earned: the ordinal-encoding pair *with the
+  explicit `categories=` domain ordering* (color J→D, clarity I1→IF — the
+  sorted-unique default would rank both wrongly), `bin_column` (cut mix per
+  carat quantile band), `plot_outliers` on non-synthetic data, and the
+  multiclass metric surface (`confusion_frame` / `per_class_metrics` /
+  `plot_confusion_matrix` at 5×5, `classification_metrics(average="macro")`).
+  Full lifecycle on `ds` + scikit-learn: boundary validation with the three
+  grade vocabularies, the physically impossible zero-dimension rows dropped
+  by a hand-rolled mask (validation asserts, nothing filters), exact
+  duplicates dropped as split-leaking re-entries (the deliberate opposite of
+  titanic's keep), a three-step fit plan (clip the measurement-error
+  dimension columns only — depth/table extremes *are* the Fair-cut signal —
+  ordinal-encode, scale), stratified 5-fold CV with the plan re-fitted per
+  fold, pipeline + model persisted and the held-out split scored from
+  reloaded state. Held-out: accuracy 0.655 / macro F1 0.551 vs the
+  proportions-only grading rule (0.546 / 0.357) and the majority class
+  (0.400 / 0.114); CV macro F1 0.549 ± 0.009. The confusion structure is the
+  honest headline: errors sit almost entirely between adjacent grades, with
+  `Good` collapsing into `Very Good` (recall 0.12). Per the demand-first
+  rule the project promotes nothing itself; its friction list is the new
+  backlog below.
+
+**Next up:** serve the `diamonds` backlog (items 14–17 below), in
+observed-pain order. Item 9's parked question —
+`cross_validate_by_time(make_pipeline=...)` — stays parked: the trigger has
+still not fired. Deprioritized until a project pulls them: more EDA helpers,
+more cookbook recipes, more CLI.
 
 ## Friction backlog (from `projects/nyc_taxis`)
 
@@ -344,7 +370,81 @@ first-try, time column and target excluded from the features as documented),
 `plot_model_comparison`, and `drop_constant_columns` catching the constant
 calendar columns.
 
-## Settled decisions (recorded rationale)
+## Friction backlog (from `projects/diamonds`)
+
+The fourth run of the demand loop — the first multiclass one. Numbering
+continues from the `flights` list; in observed-pain order:
+
+14. **The classification metric/plot surface is label-blind.** Everything is
+    typed `Sequence[int]`, so the five string cut grades had to be int-coded
+    before any metric ran — fine in itself (the ordinal encoder did it in
+    one call) — but then *every consumer-facing artifact needed the codes
+    hand-mapped back to names*: the project carries a `_named()` helper to
+    relabel `confusion_frame`/`per_class_metrics` output before persisting,
+    and a `_relabel_confusion_axes()` helper to re-set
+    `plot_confusion_matrix`'s integer tick labels on the returned Axes. At
+    two classes (titanic) 0/1 was readable; at five, `3` for Premium is not.
+    Three hand-rolled mapping sites in one pipeline is the largest observed
+    pain of the run. Candidate shape: an optional `labels=` mapping on
+    `confusion_frame`/`per_class_metrics`/`plot_confusion_matrix` (display
+    names only — the metric math staying on int codes is fine); accepting
+    string labels outright would also touch `fit_baseline`'s deliberately
+    numeric contract (item 6), which this project did *not* need changed.
+15. **Validation asserts, nothing filters.** The 20 physically impossible
+    zero-dimension rows must be *removed*, and no helper does that — the
+    project hand-rolls a boolean mask (`drop_impossible_dimensions`) and
+    then re-states the same bound in `assert_in_range(min_value=0,
+    inclusive="right")` for the surviving rows, so the rule lives in two
+    places that can drift. A `drop_out_of_range` (or a `filter=` mode on the
+    range check) would collapse the pair. Observed once; the mask is three
+    lines, so this may not clear the helper bar until a second project
+    repeats it — recorded for the trigger.
+16. **The project template scaffolds a shape no real project keeps.** First
+    real `ds new` dogfooding (it ran cleanly and the slug/layout were
+    right). Three divergences, each rewritten within minutes of scaffolding:
+    the stub `run(output_dir)` lacks the `settings: Settings | None`
+    parameter all four real pipelines need (it is how the end-to-end test
+    injects a temporary data directory — the scaffolded test calls `run()`
+    with no settings, which for a real pipeline would write into the shared
+    data tree); the scaffolded README says `uv run python
+    projects/<slug>/pipeline.py` while `ds new` itself prints "run it with
+    `ds run <slug>`"; and an empty `description` (the default) leaves a
+    dangling "`<Name> — `" in the module docstring and a blank README
+    section. Small, concrete, template-only fixes.
+17. **`classification_metrics`' binary default forces a wrapper at every
+    multiclass call site.** `average="binary"` raises beyond two classes,
+    and the `metrics_fn` hooks (`cross_validate_kfold`, `compare_models`)
+    take a two-argument callable, so the project defines
+    `macro_classification_metrics` and threads it through five call sites.
+    The wrapper is four lines and `functools.partial` would do; recorded
+    because the *next* multiclass project will write the identical wrapper —
+    may not clear the helper bar, but the recurrence trigger is precise.
+
+Notes from the same run, for the record:
+
+- **`plot_outliers` ranks by count, and count is not severity.** The plot
+  put price/depth/carat first (thousands of honestly skewed values) while
+  the physically impossible measurements — the actual data errors, a 58.9 mm
+  `y` on a 2-carat stone — were near-invisible at 2–3 flagged values each;
+  the clipping decision had to be made against `summarize()`'s max column
+  instead. A magnitude-aware view would have shown it directly, but the
+  count view is honest about what it claims and one consultation of an
+  existing report is not much pain — a note, not an item, until it recurs.
+- **Imputation stays unexercised at severity beyond titanic.** Diamonds has
+  zero missing values, so this run adds nothing on that surface — recorded
+  so the gap isn't mistaken for coverage.
+
+Where the library did *not* fight: `fit_ordinal_categories(categories=...)` /
+`apply_ordinal_encode` composed first-try — including the JSON round-trip of
+the explicit worst-to-best orders through the persisted `Pipeline` (asserted
+in the project's end-to-end test) and unseen-category behaviour never
+triggering thanks to the vocabulary validation upstream; the stratified
+five-class `cross_validate_kfold(make_pipeline=..., stratify=True)`
+composition; `fit_baseline("majority")` on the int-coded target (item 6's
+numeric-label scoping held exactly); `bin_column`'s quantile bins as an
+EDA device; `drop_duplicate_rows`; `train_test_split_random(stratify=)` at
+five classes; and the whole persistence story (`fit_pipeline` →
+`save_params`/`load_params`, `save_model`/`load_model`).
 
 Kept for the record — CLAUDE.md's engineering notes point here. Each was
 re-checked in the 2026-07 evaluation; verdicts inline.

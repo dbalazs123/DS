@@ -346,9 +346,10 @@ which also means a plan is code, not data: persist the fitted `Pipeline` it
 returns, not the plan. Write the plan as the *scoring* plan (nothing fitted
 on the target column), and pass explicit `columns=` when fitting on a
 modeling frame — the `columns=None` defaults select by dtype and would sweep
-the target in. Both real-data projects (`projects/nyc_taxis`,
-`projects/titanic`) fit their five-step scoring pipelines this way, and the
-same plan re-fits inside every cross-validation fold (see
+the target in. The real-data projects fit their scoring pipelines this way
+(five steps in `projects/nyc_taxis` and `projects/titanic`, three in
+`projects/diamonds`, one in `projects/flights`), and the same plan re-fits
+inside every cross-validation fold (see
 [Evaluate](#evaluate-dsevaluation)).
 
 ### Model — `ds.modeling`

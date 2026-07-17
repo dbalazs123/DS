@@ -7,6 +7,31 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `projects/diamonds`: fourth **real-data** project (P8 — the fourth run of
+  the demand loop, and the first **multiclass** one). Grades the cut of the
+  53,940 classic ggplot2 diamonds (seaborn-data mirror; downloaded once into
+  git-ignored `data/raw/`) into the five ordered classes Fair < Good <
+  Very Good < Premium < Ideal, chosen — after grepping which helpers still
+  had no real consumer — for quirks that pull several untouched surfaces at
+  once. First real consumers earned: `fit_ordinal_categories` /
+  `apply_ordinal_encode` with the explicit `categories=` domain ordering
+  (color J→D, clarity I1→IF), `bin_column` (cut mix per carat quantile
+  band), `plot_outliers` on non-synthetic data, and the multiclass metric
+  surface (`confusion_frame` / `per_class_metrics` / `plot_confusion_matrix`
+  at 5×5, `classification_metrics(average="macro")`). Full lifecycle on
+  `ds` + scikit-learn: boundary validation with the three grade
+  vocabularies, the physically impossible zero-dimension rows dropped, exact
+  duplicates dropped as split-leaking re-entries, a three-step fit plan
+  (clip the measurement-error dimension columns only, ordinal-encode,
+  scale) fitted via `fit_pipeline`, stratified 5-fold CV with the plan
+  re-fitted per fold, pipeline + model persisted and the held-out split
+  scored from reloaded state. Held-out: accuracy 0.655 / macro F1 0.551 vs
+  a proportions-only grading rule (0.546 / 0.357) and the majority class
+  (0.400 / 0.114). Per the demand-first rule the project promotes nothing
+  itself; its friction list is the new `ROADMAP.md` backlog (items 14–17:
+  the label-blind metric surface, validation that asserts but cannot
+  filter, template-stub divergences from what real projects keep, and the
+  macro-average wrapper every multiclass call site rewrites).
 - The `flights` friction backlog served (P7 — `ROADMAP.md` items 10–13, in
   observed-pain order, each dogfooded by `projects/flights` in the same
   change with equivalent held-out metrics):
