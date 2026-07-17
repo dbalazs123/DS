@@ -333,6 +333,10 @@ baseline = fit_baseline(y_train, strategy="mean")  # or "naive_last",
 baseline_preds = baseline.predict(len(y_test))     # or "seasonal_naive" with season_length=
 ```
 
+For classification the same call takes `strategy="majority"` — predict the
+modal training label (numeric, e.g. an int-coded 0/1 target), the reference
+every classifier must beat.
+
 Once an estimator is fitted, persist it so a later run (or another process)
 scores without refitting — the model-side counterpart to
 `save_params`/`load_params`:

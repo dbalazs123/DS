@@ -17,7 +17,7 @@ working set of the most-reached-for helpers. Built out so far:
 | Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns`, `drop_duplicate_rows`, `coerce_dtypes`, `flag_outliers`, `clip_outliers`, `impute_missing` + split-safe pairs `fit_outlier_bounds`/`apply_flag_outliers`/`apply_clip_outliers`, `fit_impute_values`/`apply_impute_missing` |
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
 | Feature | `ds.features` | `add_datetime_features` (incl. `_hour`), `one_hot_encode`, `ordinal_encode`, `collapse_categories` (top-k + "other"), `scale_features`, `bin_column` + split-safe pairs `fit_one_hot_categories`/`apply_one_hot_encode`, `fit_ordinal_categories`/`apply_ordinal_encode`, `fit_topk_categories`/`apply_collapse_categories`, `fit_scale_params`/`apply_scale_features` |
-| Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `fit_baseline` (mean / naive-last / seasonal-naive), `save_model`/`load_model` (joblib persistence), `count_tokens` |
+| Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `fit_baseline` (mean / majority / naive-last / seasonal-naive), `save_model`/`load_model` (joblib persistence), `count_tokens` |
 | Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics`, `cross_validate_by_time` (rolling origin), `cross_validate_kfold`, `compare_models` |
 | Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_confusion_matrix`, `plot_residuals`, `plot_model_comparison` |
 
@@ -172,13 +172,14 @@ Demand-driven candidates, in observed-pain order:
 The second run of the demand loop. Numbering continues from the `nyc_taxis`
 list so item references stay unambiguous; in observed-pain order:
 
-6. **No classification-shaped baseline.** `fit_baseline`'s strategies are all
-   regression-shaped — `"mean"` on the 0/1 survival target predicts 0.384,
-   a rate rather than a class label — so the majority-class reference every
-   classifier must beat was hand-rolled inline (`y_train.mode()`), exactly
-   the inline-baseline pain item 3 was meant to end. Candidate: a
-   `"majority"` strategy (predict the modal training label), the
-   classification twin of `"mean"`.
+6. ~~**No classification-shaped baseline.**~~ — **resolved**:
+   `fit_baseline` now takes `strategy="majority"` (predict the modal training
+   label, ties to the smallest label), the classification twin of `"mean"`.
+   Scoped to the observed demand: labels must be numeric (the int-coded 0/1
+   target that raised the item) — string labels stay out until a project
+   demands them, because the frozen `Baseline` contract is
+   `tuple[float, ...]`. The project's hand-rolled `y_train.mode()` reference
+   is gone, with identical held-out metrics (majority accuracy 0.615 / F1 0.0).
 7. **No split helper for order-free data.** `ds.modeling` ships only
    `train_test_split_by_time`; the manifest has no time axis, and a 62/38
    target wants stratification. The project calls scikit-learn's

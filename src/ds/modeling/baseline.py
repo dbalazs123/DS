@@ -3,7 +3,8 @@
 A metric means nothing in isolation: an r² of 0.7 is only good if predicting
 the mean scores worse. These baselines give every project's first metric a
 reference point without hand-rolling one (a friction item from the real-data
-taxi-fare project, where the train-mean baseline was built inline).
+taxi-fare project, where the train-mean baseline was built inline; the
+majority-class strategy came the same way from the titanic project).
 
 The baselines are deliberately tiny frozen objects, not scikit-learn
 estimators: they need no feature matrix — only the training target — so
@@ -18,7 +19,7 @@ from typing import Literal
 
 import pandas as pd
 
-BaselineStrategy = Literal["mean", "naive_last", "seasonal_naive"]
+BaselineStrategy = Literal["mean", "majority", "naive_last", "seasonal_naive"]
 
 
 @dataclass(frozen=True)
@@ -28,8 +29,8 @@ class Baseline:
     Attributes:
         strategy: The strategy the baseline was fitted with.
         values: The values predictions cycle through — a single value for
-            ``"mean"``/``"naive_last"``, the last observed season (in
-            chronological order) for ``"seasonal_naive"``.
+            ``"mean"``/``"majority"``/``"naive_last"``, the last observed
+            season (in chronological order) for ``"seasonal_naive"``.
     """
 
     strategy: BaselineStrategy
@@ -38,7 +39,8 @@ class Baseline:
     def predict(self, n: int) -> list[float]:
         """Predict the next ``n`` values.
 
-        ``"mean"`` and ``"naive_last"`` repeat their single fitted value;
+        ``"mean"``, ``"majority"`` and ``"naive_last"`` repeat their single
+        fitted value;
         ``"seasonal_naive"`` repeats the last fitted season cyclically
         (prediction ``i`` is the value one season before it).
 
@@ -68,6 +70,11 @@ def fit_baseline(
     Strategies:
         - ``"mean"`` — predict the training mean (the floor for any
           regression metric).
+        - ``"majority"`` — predict the modal training label; the
+          classification twin of ``"mean"`` (the reference every classifier
+          must beat). Labels must be numeric (e.g. an int-coded 0/1 target);
+          string labels are out of scope until a project demands them. Ties
+          break to the smallest label.
         - ``"naive_last"`` — predict the last training value; the standard
           random-walk baseline for time series (fit on a chronologically
           ordered target, e.g. after :func:`ds.modeling.timeseries.
@@ -80,7 +87,8 @@ def fit_baseline(
     Args:
         y: The training target, in chronological order for the naive
             strategies. Missing values are ignored for ``"mean"`` and
-            rejected in the fitted window of the naive strategies.
+            ``"majority"`` and rejected in the fitted window of the naive
+            strategies.
         strategy: One of the strategies above.
         season_length: Required for ``"seasonal_naive"``: the cycle length,
             at least 1 and at most ``len(y)``. Must be omitted otherwise.
@@ -89,7 +97,8 @@ def fit_baseline(
         The fitted :class:`Baseline`.
 
     Raises:
-        ValueError: If ``y`` is empty (or all-null for ``"mean"``), if
+        ValueError: If ``y`` is empty (or all-null for ``"mean"`` /
+            ``"majority"``), if the ``"majority"`` label is not numeric, if
             ``season_length`` is missing/invalid for ``"seasonal_naive"`` or
             supplied for another strategy, or if the values the naive
             strategies would repeat contain nulls.
@@ -104,6 +113,19 @@ def fit_baseline(
         if pd.isna(mean):
             raise ValueError("cannot fit a 'mean' baseline on an all-null series")
         return Baseline(strategy=strategy, values=(float(mean),))
+
+    if strategy == "majority":
+        modes = y.mode()  # null-free and sorted, so .iloc[0] breaks ties low
+        if len(modes) == 0:
+            raise ValueError("cannot fit a 'majority' baseline on an all-null series")
+        try:
+            label = float(modes.iloc[0])
+        except (TypeError, ValueError):
+            raise ValueError(
+                "'majority' requires numeric labels (e.g. an int-coded 0/1 target),"
+                f" got {modes.iloc[0]!r}"
+            ) from None
+        return Baseline(strategy=strategy, values=(label,))
 
     if strategy == "naive_last":
         tail = y.iloc[-1:]

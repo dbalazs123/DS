@@ -85,6 +85,26 @@ def test_fit_baseline_mean_ignores_nulls() -> None:
     assert baseline.predict(3) == [2.0, 2.0, 2.0]
 
 
+def test_fit_baseline_majority_predicts_modal_label() -> None:
+    y = pd.Series([0, 1, 1, 0, 1, None])
+    baseline = fit_baseline(y, strategy="majority")
+    assert baseline.values == (1.0,)
+    assert baseline.predict(3) == [1.0, 1.0, 1.0]
+
+
+def test_fit_baseline_majority_breaks_ties_low() -> None:
+    assert fit_baseline(pd.Series([1, 0, 0, 1]), strategy="majority").values == (0.0,)
+
+
+def test_fit_baseline_majority_rejects_bad_targets() -> None:
+    with pytest.raises(ValueError, match="all-null"):
+        fit_baseline(pd.Series([None, None], dtype=float), strategy="majority")
+    with pytest.raises(ValueError, match="numeric labels"):
+        fit_baseline(pd.Series(["yes", "yes", "no"]), strategy="majority")
+    with pytest.raises(ValueError, match="season_length"):
+        fit_baseline(pd.Series([0, 1, 1]), strategy="majority", season_length=2)
+
+
 def test_fit_baseline_naive_last_repeats_final_value() -> None:
     y = pd.Series([10.0, 20.0, 30.0])
     assert fit_baseline(y, strategy="naive_last").predict(2) == [30.0, 30.0]

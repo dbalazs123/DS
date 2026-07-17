@@ -50,6 +50,7 @@ from ds.evaluation import (
 )
 from ds.features import fit_one_hot_categories, fit_scale_params
 from ds.io import load_raw, save_params, save_processed
+from ds.modeling.baseline import fit_baseline
 from ds.modeling.persistence import load_model, save_model
 from ds.modeling.tabular import split_features_target
 from ds.pipeline import Pipeline, PipelineStep
@@ -271,13 +272,13 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     preds = model.predict(x_test)
 
     # 10. Evaluate — the classification stack this project exists to exercise.
-    # The majority-class reference is hand-rolled: ds.modeling.fit_baseline is
-    # regression-shaped (its "mean" strategy would predict 0.38, not a class
-    # label) — recorded as friction in ROADMAP.md rather than built here. The
-    # sex-only rule (predict survival iff female) is the classic strong
-    # heuristic every Titanic model must beat to justify its features.
-    majority = int(y_train.mode().iloc[0])
-    majority_preds = [majority] * len(y_test)
+    # The majority-class reference comes from the library's "majority"
+    # baseline (friction item 6, promoted from this project's hand-rolled
+    # y_train.mode()). The sex-only rule (predict survival iff female) is the
+    # classic strong heuristic every Titanic model must beat to justify its
+    # features.
+    majority = fit_baseline(y_train, strategy="majority")
+    majority_preds = [int(value) for value in majority.predict(len(y_test))]
     sex_only_preds = [int(value) for value in x_test["sex_female"] > 0]
     comparison = compare_models(
         y_test.tolist(),
