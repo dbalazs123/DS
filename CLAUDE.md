@@ -28,7 +28,8 @@ in the **same** change.
 │   └── py.typed
 ├── projects/              # analyses/experiments (_example = synthetic teaching
 │                          #   reference; nyc_taxis = real-data fare prediction;
-│                          #   titanic = real-data survival classification)
+│                          #   titanic = real-data survival classification;
+│                          #   flights = real-data passenger forecasting)
 ├── templates/project/     # copier template for new projects
 ├── notebooks/             # exploratory notebooks
 ├── data/                  # git-ignored: raw/ interim/ processed/
@@ -74,14 +75,13 @@ more detail).
 
 ## Roadmap
 
-[`ROADMAP.md`](ROADMAP.md) carries the plan of record (P1–P5 all done; both
-friction backlogs are fully served — item 9's design pass added
-`ds.pipeline.fit_pipeline` and per-fold re-fitting via
-`cross_validate_kfold(make_pipeline=...)`, and the amended pure-composition
-rationale is recorded in the settled decisions — so the queue is a fresh
-demand loop, not more supply), a goal evaluation of the whole toolkit, the
-friction backlogs from the real-data projects, and the settled-decision
-rationales this file's notes point to. Read it before starting new library work — and note its
+[`ROADMAP.md`](ROADMAP.md) carries the plan of record (P1–P6 all done; the
+third demand loop — `projects/flights`, the first forecasting project —
+regenerated the queue, so the open backlog is its friction items 10–13, led
+by the missing time-series plot in `ds.viz`), a goal evaluation of the whole
+toolkit, the friction backlogs from the real-data projects, and the
+settled-decision rationales this file's notes point to. Read it before
+starting new library work — and note its
 ordering rule: new library work should trace to a friction item from a real
 project, not a brainstormed candidate list.
 
@@ -93,6 +93,12 @@ Things that cost a round-trip to discover; save yourself the CI failure:
   job runs the full pre-commit suite, which includes `ruff-format`. `ruff check`
   passing does **not** mean the formatter is satisfied — e.g. a two-line
   function signature ruff wants collapsed will fail the lint job.
+- **`git add` new files *before* running `pre-commit run --all-files`.**
+  pre-commit only sees git-tracked files, so a pre-flight run over freshly
+  created (still-untracked) files silently checks nothing. Also note the
+  pinned pre-commit ruff (`.pre-commit-config.yaml` rev) trails the dev-env
+  ruff, so a rule retired in the newer version (e.g. UP027) can still fail CI
+  even when `make lint`/`make format` are clean.
 - **`mypy --strict` + pandas-stubs quirks:** `DataFrame.corr(method=...)` wants a
   `Literal["pearson","kendall","spearman"]`, not `str`; and `df.loc[a, b]`
   returns a broad scalar union that `float()` rejects — index positionally via

@@ -7,6 +7,30 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Third real-data project, and the first **forecasting** one:
+  `projects/flights` forecasts the 144 monthly international-airline-
+  passenger totals, 1949–1960 (the classic Box & Jenkins series,
+  seaborn-data mirror), chosen for a genuine time axis with strong yearly
+  seasonality — the first data to stress the time-series surface.
+  `train_test_split_by_time` gains its second consumer;
+  `cross_validate_by_time` (rolling-origin folds) and `fit_baseline`'s
+  `"naive_last"`/`"seasonal_naive"` strategies gain their first real ones.
+  Full lifecycle on `ds` + scikit-learn: a hand-assembled time axis (year +
+  month-name → one sorted datetime column, duplicates rejected), calendar
+  features with the monthly-resolution noise dropped (`drop_constant_columns`
+  catches the constant half), a hand-rolled `month_index` trend, a one-step
+  fit plan (the month one-hot vocabulary) persisted as the scoring
+  `Pipeline`, the model persisted and the held-out window scored from the
+  reloaded copy, and a linear trend + month-effects model evaluated against
+  both naive references on the strictly future 29-month window: MAE 34.3 vs
+  seasonal-naive 64.8 and naive-last 81.4 (thousands of passengers), r² 0.63
+  — honest about an additive model under multiplicative seasonality. Per the
+  demand-first rule the project promotes nothing; its friction is recorded
+  as items 10–13 of `ROADMAP.md`'s new backlog (P6 of the plan of record),
+  led by the missing time-series plot in `ds.viz`. Item 9's parked
+  `cross_validate_by_time(make_pipeline=...)` question stays parked —
+  measured on this project, per-fold re-fitting would re-learn the identical
+  month vocabulary on every fold.
 - The fit-side design pass (`ROADMAP.md` friction items 5 + 9 — the deferred
   reopening of the settled pure-composition decision; the amended rationale
   is recorded there):

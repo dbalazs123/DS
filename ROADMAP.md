@@ -26,8 +26,9 @@ the `fit_*`/`apply_*` pairs, fitted in one call from a `FitStep` plan via
 `fit_pipeline`), `ds` CLI (`ds version`, `ds new`, `ds run`), a
 per-stage docs Guide with cross-stage recipes, a `test-extras` CI job,
 single-sourced version, and an extended project template. `projects/` holds the
-synthetic worked example (`_example`) and two **real-data** projects:
-`nyc_taxis` (regression) and `titanic` (classification).
+synthetic worked example (`_example`) and three **real-data** projects:
+`nyc_taxis` (regression), `titanic` (classification) and `flights`
+(forecasting).
 
 ## Goal evaluation (2026-07)
 
@@ -41,8 +42,9 @@ extending recent momentum. Verdicts, and what they imply:
   library work") had never run, while eight consecutive PRs invested in
   supply-side library polish. **Consequence:** every library addition should
   now be pulled by a project need, not pushed from a candidate list. The
-  friction backlogs below are the queue (currently **empty** — both lists are
-  fully served, so the next step is regenerating demand, not building).
+  friction backlogs below are the queue (the `nyc_taxis` and `titanic` lists
+  are fully served; the open items are the `flights` backlog from the third
+  demand loop).
 - **Fit-once / score-later** — *stopped one step short of its own goal;
   since closed (P2).* Fitted parameters and the `Pipeline` persist as strict
   JSON, but at evaluation time the fitted **model** could not be persisted at
@@ -131,15 +133,32 @@ orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
   majority class (0.615 / 0.0). Per the demand-first rule the project
   promotes nothing itself; its friction list is the new backlog below.
 
-**Next up:** both friction backlogs are fully served — item 9 got its design
-pass (`fit_pipeline` + per-fold re-fitting via `make_pipeline`; the amended
-pure-composition rationale is recorded under settled decisions below) and
-closed item 5 with it. The queue is **empty**: per the demand-first rule the
-next step is a fresh demand loop (a third real-data project that stresses a
-still-untouched surface — e.g. the time-series side, where
-`cross_validate_by_time` and the temporal helpers have only one consumer),
-not another supply-side batch. Deprioritized until a project pulls them:
-more EDA helpers, more viz, more cookbook recipes, more CLI.
+- **P6 — regenerate demand with a third real-data project (forecasting):
+  DONE.** `projects/flights` forecasts the 144 monthly international-airline-
+  passenger totals, 1949–1960 (the classic Box & Jenkins series, seaborn-data
+  mirror) — chosen for a genuine time axis with strong yearly seasonality,
+  and the first project to stress the time-series surface:
+  `train_test_split_by_time` gains its second consumer, and
+  `cross_validate_by_time` (rolling-origin folds) and `fit_baseline`'s
+  `"naive_last"`/`"seasonal_naive"` strategies their first real ones. Full
+  lifecycle on `ds` + scikit-learn: hand-assembled time axis, calendar
+  features with the monthly-resolution noise dropped, a hand-rolled
+  `month_index` trend, a one-step fit plan (the month one-hot vocabulary)
+  persisted as the scoring `Pipeline`, the model persisted and the held-out
+  window scored from reloaded state, and a linear trend + month-effects
+  model evaluated against both naive references on the strictly future
+  29-month window (MAE 34.3 vs seasonal-naive 64.8 and naive-last 81.4;
+  r² 0.63 — honest about an additive model under multiplicative
+  seasonality). Per the demand-first rule the project promotes nothing
+  itself; its friction list is the new backlog below.
+
+**Next up:** the third demand loop (P6) regenerated the queue — the
+`flights` backlog below (items 10–13) is the plan, in observed-pain order;
+the strongest item is the missing time-series plot (10). Item 9's parked
+question — `cross_validate_by_time(make_pipeline=...)` — stays parked: the
+trigger did not fire on this project (see the backlog notes). Deprioritized
+until a project pulls them: more EDA helpers, more cookbook recipes, more
+CLI.
 
 ## Friction backlog (from `projects/nyc_taxis`)
 
@@ -227,6 +246,58 @@ Where the library did *not* fight: the classification metric/plot surface
 itself (`classification_metrics`, `confusion_frame`, `per_class_metrics`,
 `plot_confusion_matrix`, `compare_models` with a swapped `metrics_fn`)
 composed first-try with no workarounds.
+
+## Friction backlog (from `projects/flights`)
+
+The third run of the demand loop — the first to stress the time-series
+surface. Numbering continues from the `titanic` list; in observed-pain
+order:
+
+10. **No time-series plot in `ds.viz`.** The two most standard forecasting
+    visuals — the raw series over time and forecast-vs-actual over the
+    held-out window — both had to be hand-rolled with raw matplotlib
+    (`series.png`, `forecast.png`), twice in one pipeline; the stage has no
+    plot with a time axis at all. The strongest item: repeated pain within a
+    single project, and every future forecasting project would repeat it.
+11. **`add_datetime_features` is all-or-nothing.** On a monthly series half
+    its output does not apply: `_day`/`_hour` are constant (caught by
+    `drop_constant_columns` — that composition worked) but `_dayofweek`/
+    `_is_weekend` are non-constant *noise* (the weekday each month's 1st
+    lands on) that nothing catches, so the project hand-drops them. Whether
+    the fix is a feature-selection parameter or a resolution-aware default
+    should be decided when it's built, not here.
+12. **No elapsed-time/trend feature.** A linear forecaster needs a monotone
+    time index; the stage emits calendar *position* only, so
+    `month_index = year * 12 + month` is hand-rolled.
+13. **The time axis was assembled by hand** from a two-column `year` +
+    month-name split. Real but small (one `pd.to_datetime(..., format=)`
+    call plus a uniqueness check); recorded honestly — on its own it may not
+    clear the bar for a helper.
+
+Notes from the same run, for the record:
+
+- **Item 9's parked question stays parked.** This project's rolling-origin
+  CV does consume an already-transformed frame — exactly the situation
+  `cross_validate_kfold(make_pipeline=...)` exists for — but the demand
+  trigger did **not** fire: the only fitted state is the month one-hot
+  vocabulary, and re-fitting it per fold was measured to produce the
+  identical 12 calendar months on every fold (every training window spans at
+  least 20 months). `cross_validate_by_time` still has no consumer that
+  needs per-fold re-fitting.
+- **`fit_pipeline` scope finding, not a gap:** the fit plan has exactly one
+  step. A complete series whose extremes are signal, scored by a scale-free
+  model, needs no imputation, clipping or scaling — on clean time-series
+  data most of the fit-based transform surface has nothing to do, and the
+  executor's value reduces to building the persistable scoring `Pipeline`.
+
+Where the library did *not* fight: `train_test_split_by_time`,
+`fit_baseline`'s `"naive_last"`/`"seasonal_naive"` (whose positional
+alignment is correct by construction when the scored window starts right
+after training), `cross_validate_by_time` (first real consumer — composed
+first-try, time column and target excluded from the features as documented),
+`regression_metrics`/`compare_models`/`plot_residuals`/
+`plot_model_comparison`, and `drop_constant_columns` catching the constant
+calendar columns.
 
 ## Settled decisions (recorded rationale)
 
