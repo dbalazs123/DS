@@ -12,21 +12,24 @@ zone columns (too many to one-hot directly — collapsed to their top-15 levels
 (`tip`, `tolls`, `total`) that would leak the target.
 
 The pipeline downloads the CSV once into `data/raw/` (git-ignored) and runs
-fetch → validate → explore → clean → chronological split →
-fit-on-train/apply-to-both → persist the scoring `Pipeline` and the fitted
+fetch → validate → explore → clean → chronological split → fit the transform
+plan on the training split (`ds.pipeline.fit_pipeline`, promoted from this
+project's friction item 5) → persist the scoring `Pipeline` and the fitted
 model (`ds.modeling.persistence`) → score the held-out window from the
 *reloaded* model → evaluate against a naive train-mean baseline → residual
 plot.
 
 This project exists to run the workspace's demand loop: friction it surfaced
-in the library is recorded in [`ROADMAP.md`](../../ROADMAP.md), and all four
+in the library is recorded in [`ROADMAP.md`](../../ROADMAP.md), and all five
 of its items have since been promoted into the library and are consumed
 here — model persistence (`ds.modeling.persistence`), `pickup_hour` from
 `add_datetime_features`, the train-mean baseline
 (`ds.modeling.baseline.fit_baseline`, compared via
-`ds.evaluation.compare_models` + `ds.viz.plot_model_comparison`), and the
+`ds.evaluation.compare_models` + `ds.viz.plot_model_comparison`), the
 top-k+"other" encoder (`ds.features.fit_topk_categories`) for the ~200-level
-zone columns the model originally had to drop. The zones earn their place:
+zone columns the model originally had to drop, and the fit-plan executor
+(`ds.pipeline.fit_pipeline`) that replaced the hand-strung
+fit → apply → fit chain. The zones earn their place:
 against a boroughs-only variant on the same held-out window, MAE improves
 from 2.62 to 2.26 (−14%) and r² from 0.729 to 0.765.
 

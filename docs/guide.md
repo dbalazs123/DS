@@ -309,6 +309,40 @@ parameters and run as plain calls before or after `apply`. The worked example
 rows that did not exist at fit time, while the target-column bounds and fill
 are persisted separately.
 
+#### Fit the whole plan in one call
+
+The fit side has a matching executor. Fitting several dependent transforms by
+hand means the fit → apply → fit dance: fit the bounds, apply them, fit the
+fills on the clipped frame, apply those, fit the vocabulary on the imputed
+frame… `ds.pipeline.fit_pipeline` runs that chain from a *plan* — an ordered
+list of `FitStep` entries, each pairing a step kind with the callable that
+fits it — and returns the assembled `Pipeline`:
+
+```python
+from ds.pipeline import FitStep, fit_pipeline
+
+plan = [
+    FitStep("clip_outliers", lambda df: fit_outlier_bounds(df, columns=["fare"])),
+    FitStep("impute_missing", lambda df: fit_impute_values(df, columns=["age"], strategy="median")),
+    FitStep("one_hot_encode", lambda df: fit_one_hot_categories(df, columns=["sex", "embarked"])),
+    FitStep("scale_features", lambda df: fit_scale_params(df, columns=numeric_features)),
+]
+scoring = fit_pipeline(train, plan)                   # fit → apply → fit, in order
+```
+
+Each step's callable receives the training frame *as transformed by the
+steps before it*, exactly as the manual chain would. The lambdas close over
+the varying `fit_*` keyword arguments (`columns=`, `strategy=`, `k=`), so
+one plan type covers every transform without mirroring each signature —
+which also means a plan is code, not data: persist the fitted `Pipeline` it
+returns, not the plan. Write the plan as the *scoring* plan (nothing fitted
+on the target column), and pass explicit `columns=` when fitting on a
+modeling frame — the `columns=None` defaults select by dtype and would sweep
+the target in. Both real-data projects (`projects/nyc_taxis`,
+`projects/titanic`) fit their five-step scoring pipelines this way, and the
+same plan re-fits inside every cross-validation fold (see
+[Evaluate](#evaluate-dsevaluation)).
+
 ### Model — `ds.modeling`
 
 Split tabular data into features and target, and hold out a test set: split
@@ -408,6 +442,29 @@ Both default to `regression_metrics` per fold; pass
 `metrics_fn=classification_metrics` (or your own scorer) for classifiers —
 and on a classification target give `cross_validate_kfold` `stratify=True`,
 so every fold keeps the frame's class balance instead of letting it drift.
+
+Watch what frame you hand it: if the features already carry fit-based
+transforms fitted on the whole training split, every fold's test rows have
+influenced the statistics (imputation fills, scale parameters, …) its
+training rows were transformed with. `cross_validate_kfold` closes that leak
+with `make_pipeline` — pass the raw frame plus the same fit plan the training
+run uses (see [Fit the whole plan in one
+call](#fit-the-whole-plan-in-one-call)), and the transform chain is re-fitted
+on each fold's training rows only:
+
+```python
+from ds.pipeline import fit_pipeline
+
+cross_validate_kfold(
+    raw_train,                     # before the fit-based transforms
+    target="survived",
+    make_model=lambda: LogisticRegression(max_iter=1000),
+    make_pipeline=lambda frame: fit_pipeline(frame, plan),
+    stratify=True,
+    metrics_fn=classification_metrics,
+)
+```
+
 Finally, score candidates side by side — including the baseline — with
 `compare_models`, whose frame feeds `ds.viz.plot_model_comparison`:
 

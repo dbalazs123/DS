@@ -20,7 +20,7 @@ in the **same** change.
 ├── Makefile               # thin task wrappers (make help)
 ├── src/ds/                # reusable library, organized by DS process
 │   ├── config.py logging.py reproducibility.py cli.py   # cross-cutting + `ds` CLI
-│   ├── pipeline.py        # fit-once/apply-many Pipeline over the fit_*/apply_* pairs
+│   ├── pipeline.py        # fit-once/apply-many Pipeline + fit_pipeline plan executor
 │   ├── _serde.py          # private: fitted-parameter dict/JSON round-trip helpers
 │   ├── io/ validation/ preprocessing/ eda/ features/
 │   ├── modeling/          # tabular.py timeseries.py nlp.py
@@ -74,11 +74,12 @@ more detail).
 
 ## Roadmap
 
-[`ROADMAP.md`](ROADMAP.md) carries the plan of record (P1–P5 all done; the
-`nyc_taxis` friction backlog is fully served and `titanic`'s items 6–8 are
-too — the queue is `titanic` item 9, per-fold re-fitting of the transform
-chain, which reopens the settled pure-composition decision on `ds.pipeline`
-and needs its own design pass), a goal evaluation of the whole toolkit, the
+[`ROADMAP.md`](ROADMAP.md) carries the plan of record (P1–P5 all done; both
+friction backlogs are fully served — item 9's design pass added
+`ds.pipeline.fit_pipeline` and per-fold re-fitting via
+`cross_validate_kfold(make_pipeline=...)`, and the amended pure-composition
+rationale is recorded in the settled decisions — so the queue is a fresh
+demand loop, not more supply), a goal evaluation of the whole toolkit, the
 friction backlogs from the real-data projects, and the settled-decision
 rationales this file's notes point to. Read it before starting new library work — and note its
 ordering rule: new library work should trace to a friction item from a real

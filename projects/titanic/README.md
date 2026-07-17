@@ -13,11 +13,12 @@ real quirks: missing values at three very different severities (`age` ~20%,
 `embark_town`, `alone`), and a heavily skewed `fare`.
 
 The pipeline downloads the CSV once into `data/raw/` (git-ignored) and runs
-fetch → validate → explore → clean → stratified split →
-fit-on-train/apply-to-both → persist the scoring `Pipeline` and the fitted
-model (`ds.modeling.persistence`) → score the held-out split from the
-*reloaded* model → evaluate with the classification stack → confusion-matrix
-and comparison plots.
+fetch → validate → explore → clean → stratified split → fit the transform
+plan on the training split (`ds.pipeline.fit_pipeline`) → cross-validate
+with the same plan re-fitted inside each fold → persist the scoring
+`Pipeline` and the fitted model (`ds.modeling.persistence`) → score the
+held-out split from the *reloaded* model → evaluate with the classification
+stack → confusion-matrix and comparison plots.
 
 This project exists to run the workspace's demand loop a second time — and to
 exercise the evaluation surface no real project had touched:
@@ -41,13 +42,17 @@ is promoted in the same change (demand first, one step per change).
   distinct passengers (the manifest has no identifier column); deduplicating
   would silently delete real people.
 - **Stratified shuffled split.** No time axis, so the chronological splitter
-  doesn't apply; scikit-learn's `train_test_split(stratify=...)` keeps the
-  62/38 class balance in both halves (a gap recorded as friction —
-  `ds.modeling` only ships the chronological splitter).
-- **Two baselines.** The majority-class reference (hand-rolled:
-  `fit_baseline` is regression-shaped — friction, recorded not built) and
-  the classic sex-only rule (predict survival iff female), which any model
-  must beat to justify its other features.
+  doesn't apply; `train_test_split_random(stratify=...)` (promoted from this
+  project's friction item 7) keeps the 62/38 class balance in both halves.
+- **Leak-free cross-validation.** The CV runs on the raw training split and
+  re-fits the five-step transform plan inside each fold
+  (`cross_validate_kfold(make_pipeline=...)`, promoted from friction item 9)
+  — previously the folds reused imputation/scaling statistics fitted on the
+  whole training frame.
+- **Two baselines.** The majority-class reference
+  (`fit_baseline(strategy="majority")`, promoted from this project's
+  friction item 6) and the classic sex-only rule (predict survival iff
+  female), which any model must beat to justify its other features.
 
 ## Run
 

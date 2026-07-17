@@ -10,10 +10,11 @@ target respelled as a feature (``alive``), derived duplicates (``class``,
 ``fare``.
 
 The pipeline runs the full lifecycle on ``ds`` + scikit-learn alone: fetch →
-validate → explore → clean → stratified split → fit-on-train/apply-to-both →
-persist the scoring pipeline and the fitted model → score from the reloaded
-model → evaluate with the classification stack (k-fold cross-validation,
-confusion matrix, per-class metrics, model comparison) against a
+validate → explore → clean → stratified split → fit the transform plan on the
+training split (``ds.pipeline.fit_pipeline``) → cross-validate with the same
+plan re-fitted inside each fold → persist the scoring pipeline and the fitted
+model → score from the reloaded model → evaluate with the classification
+stack (confusion matrix, per-class metrics, model comparison) against a
 majority-class baseline and the classic sex-only rule → visualize. Friction it
 surfaced in the library is recorded in ``ROADMAP.md`` — that regenerated
 backlog is as much the deliverable as the model.
@@ -52,10 +53,8 @@ from ds.io import load_raw, save_params, save_processed
 from ds.modeling.baseline import fit_baseline
 from ds.modeling.persistence import load_model, save_model
 from ds.modeling.tabular import split_features_target, train_test_split_random
-from ds.pipeline import Pipeline, PipelineStep
+from ds.pipeline import FitStep, fit_pipeline
 from ds.preprocessing import (
-    apply_clip_outliers,
-    apply_impute_missing,
     fit_impute_values,
     fit_outlier_bounds,
     standardize_column_names,
@@ -211,53 +210,53 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     # balance in both halves.
     train, test = train_test_split_random(df, test_size=0.2, stratify=_TARGET)
 
-    # 6. Fit on train, apply to both. Each parameter set is fitted on the
-    # train frame as transformed by the steps before it, then the whole
-    # ordered chain is applied through one Pipeline. Two impute steps because
-    # age (median) and embarked (most frequent) need different strategies.
-    bounds = fit_outlier_bounds(train, columns=["fare"])
-    clipped = apply_clip_outliers(train, bounds)
-    age_fill = fit_impute_values(clipped, columns=["age"], strategy="median")
-    imputed = apply_impute_missing(clipped, age_fill)
-    embarked_fill = fit_impute_values(imputed, columns=["embarked"], strategy="most_frequent")
-    imputed = apply_impute_missing(imputed, embarked_fill)
-    vocabulary = fit_one_hot_categories(imputed, columns=_CATEGORICAL)
-    scaling = fit_scale_params(imputed, columns=_NUMERIC_FEATURES)
+    # 6. Fit on train, apply to both. fit_pipeline runs the ordered
+    # fit → apply → fit chain (each parameter set fitted on the train frame
+    # as transformed by the steps before it) that this project used to
+    # hand-string — friction item 5. Two impute steps because age (median)
+    # and embarked (most frequent) need different strategies; the same plan
+    # re-fits inside every cross-validation fold below.
+    plan = [
+        FitStep("clip_outliers", lambda df: fit_outlier_bounds(df, columns=["fare"])),
+        FitStep(
+            "impute_missing",
+            lambda df: fit_impute_values(df, columns=["age"], strategy="median"),
+        ),
+        FitStep(
+            "impute_missing",
+            lambda df: fit_impute_values(df, columns=["embarked"], strategy="most_frequent"),
+        ),
+        FitStep("one_hot_encode", lambda df: fit_one_hot_categories(df, columns=_CATEGORICAL)),
+        FitStep("scale_features", lambda df: fit_scale_params(df, columns=_NUMERIC_FEATURES)),
+    ]
+    scoring = fit_pipeline(train, plan)
 
-    scoring = Pipeline(
-        steps=(
-            PipelineStep("clip_outliers", bounds),
-            PipelineStep("impute_missing", age_fill),
-            PipelineStep("impute_missing", embarked_fill),
-            PipelineStep("one_hot_encode", vocabulary),
-            PipelineStep("scale_features", scaling),
-        )
-    )
-    train = scoring.apply(train)
-    test = scoring.apply(test)
-    assert_no_nulls(train)
-    assert_no_nulls(test)
-
-    # 7. Persist the processed data and the whole scoring pipeline.
-    save_processed(pd.concat([train, test]), "titanic_features.parquet", settings=settings)
-    params_dir = settings.processed_dir / "params"
-    save_params(scoring, params_dir / "titanic_scoring.json")
-
-    # 8. Cross-validate on the training split before committing to a model —
-    # the first real composition of cross_validate_kfold with
-    # classification_metrics, stratified so each fold keeps the 62/38 class
-    # balance (friction item 8). One caveat remains, recorded as friction in
-    # ROADMAP.md (item 9): the folds reuse transforms fitted on the *whole*
-    # training frame (the ds Pipeline cannot re-fit per fold).
+    # 7. Cross-validate on the *raw* training split before committing to a
+    # model — the transform chain is re-fitted inside each fold via the same
+    # plan (friction item 9: previously the folds reused transforms fitted on
+    # the whole training frame, so every fold's test rows had influenced the
+    # imputation and scaling statistics). Stratified so each fold keeps the
+    # 62/38 class balance (friction item 8).
     cv_scores = cross_validate_kfold(
         train,
         target=_TARGET,
         make_model=lambda: LogisticRegression(max_iter=1000),
+        make_pipeline=lambda frame: fit_pipeline(frame, plan),
         stratify=True,
         metrics_fn=classification_metrics,
     )
     cv_scores.to_csv(output_dir / "cv_folds.csv")
     logger.info("5-fold CV accuracy: %.3f (+/- %.3f)", *_mean_std(cv_scores["accuracy"]))
+
+    train = scoring.apply(train)
+    test = scoring.apply(test)
+    assert_no_nulls(train)
+    assert_no_nulls(test)
+
+    # 8. Persist the processed data and the whole scoring pipeline.
+    save_processed(pd.concat([train, test]), "titanic_features.parquet", settings=settings)
+    params_dir = settings.processed_dir / "params"
+    save_params(scoring, params_dir / "titanic_scoring.json")
 
     # 9. Model — fitted once, persisted next to the scoring pipeline, and the
     # held-out split scored from the *reloaded* copy, proving a later run

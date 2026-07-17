@@ -104,11 +104,11 @@ def test_pipeline_end_to_end(tmp_path: Path) -> None:
     assert {"logistic_regression", "sex_only_rule", "majority_class"} <= set(comparison.index)
     assert {"accuracy", "precision", "recall", "f1"} <= set(comparison.columns)
 
-    # Five stratified k-fold rows, scored with classification metrics — the
-    # first real composition of cross_validate_kfold with
-    # metrics_fn=classification_metrics (stratify=True keeps every fold at
-    # the 62/38 class balance; per-fold recall still varies with which
-    # positives land in a fold, so no tighter spread is asserted).
+    # Five stratified k-fold rows, scored with classification metrics, with
+    # the transform plan re-fitted inside each fold via make_pipeline
+    # (friction item 9 — previously the folds reused transforms fitted on
+    # the whole training frame). Per-fold recall still varies with which
+    # positives land in a fold, so no tighter spread is asserted.
     cv_scores = pd.read_csv(out / "cv_folds.csv", index_col=0)
     assert len(cv_scores) == 5
     assert {"accuracy", "f1", "train_size", "test_size"} <= set(cv_scores.columns)

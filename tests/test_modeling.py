@@ -19,11 +19,14 @@ from ds.evaluation import (
     per_class_metrics,
     regression_metrics,
 )
+from ds.features import fit_scale_params
 from ds.modeling.baseline import fit_baseline
 from ds.modeling.nlp import count_tokens
 from ds.modeling.persistence import load_model, save_model
 from ds.modeling.tabular import split_features_target, train_test_split_random
 from ds.modeling.timeseries import train_test_split_by_time
+from ds.pipeline import FitStep, Pipeline, fit_pipeline
+from ds.preprocessing import ImputeValues, fit_impute_values
 from ds.viz import set_theme
 
 
@@ -288,6 +291,79 @@ def test_cross_validate_kfold_stratify_warns_on_sparse_class() -> None:
             stratify=True,
         )
     assert len(result) == 3
+
+
+def test_cross_validate_kfold_refits_pipeline_per_fold() -> None:
+    # x carries NaNs, so the model would reject the frame unless each fold's
+    # imputation actually runs — and shuffle=False makes the fold-train
+    # medians differ from the whole-frame median, so re-fitting (rather than
+    # reusing one whole-frame fit) is observable in the fitted parameters.
+    df = pd.DataFrame(
+        {
+            "x": [None, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, None],
+            "y": [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0, 18.0],
+        }
+    )
+    plan = [
+        FitStep("impute_missing", lambda d: fit_impute_values(d, ["x"], strategy="median")),
+        FitStep("scale_features", lambda d: fit_scale_params(d, ["x"])),
+    ]
+    seen: list[pd.DataFrame] = []
+    fitted: list[Pipeline] = []
+
+    def make_pipeline(frame: pd.DataFrame) -> Pipeline:
+        seen.append(frame)
+        pipeline = fit_pipeline(frame, plan)
+        fitted.append(pipeline)
+        return pipeline
+
+    result = cross_validate_kfold(
+        df,
+        target="y",
+        make_model=lambda: LinearRegression(),
+        make_pipeline=make_pipeline,
+        n_splits=2,
+        shuffle=False,
+    )
+    assert len(result) == 2
+    assert result["mae"].notna().all()
+
+    # One fresh fit per fold, on exactly that fold's training rows (the
+    # target column rides along, as at final-training time).
+    assert [len(frame) for frame in seen] == [5, 5]
+    assert all("y" in frame.columns for frame in seen)
+    assert seen[0].index.tolist() == [5, 6, 7, 8, 9]
+    assert seen[1].index.tolist() == [0, 1, 2, 3, 4]
+
+    # The fitted statistics are the fold's own, not the whole frame's.
+    fold_fills: list[float] = []
+    for pipeline in fitted:
+        params = pipeline.steps[0].params
+        assert isinstance(params, ImputeValues)
+        fold_fills.append(float(params.fill_values["x"]))
+    assert fold_fills == [6.5, 2.5]
+    assert float(df["x"].median()) not in fold_fills
+
+
+def test_cross_validate_kfold_pipeline_composes_with_stratify() -> None:
+    from sklearn.dummy import DummyClassifier
+
+    df = _labeled_frame(50)
+    result = cross_validate_kfold(
+        df,
+        target="y",
+        make_model=lambda: DummyClassifier(strategy="most_frequent"),
+        make_pipeline=lambda frame: fit_pipeline(
+            frame, [FitStep("scale_features", lambda d: fit_scale_params(d, ["x"]))]
+        ),
+        n_splits=5,
+        stratify=True,
+        metrics_fn=classification_metrics,
+    )
+    assert len(result) == 5
+    # The majority class is 0 everywhere, so accuracy is the fold's negative
+    # share — stratified to exactly 70% in every fold.
+    assert result["accuracy"].tolist() == [0.7] * 5
 
 
 def test_compare_models_scores_side_by_side() -> None:

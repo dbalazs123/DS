@@ -9,6 +9,8 @@ import pandas as pd
 from sklearn import metrics
 from sklearn.model_selection import KFold, StratifiedKFold
 
+from ds.pipeline import Pipeline
+
 
 def regression_metrics(y_true: Sequence[float], y_pred: Sequence[float]) -> dict[str, float]:
     """Compute common regression metrics.
@@ -189,6 +191,7 @@ def cross_validate_kfold(
     *,
     target: str,
     make_model: Callable[[], Any],
+    make_pipeline: Callable[[pd.DataFrame], Pipeline] | None = None,
     n_splits: int = 5,
     shuffle: bool = True,
     stratify: bool = False,
@@ -205,11 +208,23 @@ def cross_validate_kfold(
     generator, so :func:`ds.seed_everything` makes the folds reproducible.
 
     Args:
-        df: The modeling frame (features + target).
+        df: The modeling frame (features + target). With ``make_pipeline``
+            set, pass the frame *before* the fit-based transforms — the
+            point is to re-fit them inside each fold.
         target: Name of the target column.
         make_model: Zero-argument factory returning a **fresh** unfitted
             model with scikit-learn's ``fit``/``predict`` protocol; a new
             instance is built per fold.
+        make_pipeline: Factory fitting a **fresh** transform
+            :class:`~ds.pipeline.Pipeline` on a training frame — typically
+            ``lambda frame: fit_pipeline(frame, plan)`` with the same plan
+            the training run uses. Called once per fold with that fold's
+            training rows (target column included); the fitted pipeline is
+            applied to both fold halves before the model sees them. Without
+            it, handing this function an already-transformed frame leaks:
+            every fold's test rows have influenced the statistics (imputation
+            fills, scale parameters, …) its training rows were transformed
+            with.
         n_splits: Number of folds.
         shuffle: Whether to shuffle rows before splitting.
         stratify: Keep every fold's target class balance at the frame's —
@@ -235,18 +250,23 @@ def cross_validate_kfold(
     if not 2 <= n_splits <= len(df):
         raise ValueError(f"n_splits must be between 2 and len(df)={len(df)}, got {n_splits}")
 
-    features = df.drop(columns=[target])
     rows: list[dict[str, float]] = []
     folds = (
         StratifiedKFold(n_splits=n_splits, shuffle=shuffle)
         if stratify
         else KFold(n_splits=n_splits, shuffle=shuffle)
     )
-    for train_idx, test_idx in folds.split(features, df[target]):
+    for train_idx, test_idx in folds.split(df.drop(columns=[target]), df[target]):
+        train = df.iloc[train_idx]
+        test = df.iloc[test_idx]
+        if make_pipeline is not None:
+            pipeline = make_pipeline(train)
+            train = pipeline.apply(train)
+            test = pipeline.apply(test)
         model = make_model()
-        model.fit(features.iloc[train_idx], df[target].iloc[train_idx])
-        predictions = model.predict(features.iloc[test_idx])
-        scores = metrics_fn(df[target].iloc[test_idx].tolist(), list(predictions))
+        model.fit(train.drop(columns=[target]), train[target])
+        predictions = model.predict(test.drop(columns=[target]))
+        scores = metrics_fn(test[target].tolist(), list(predictions))
         rows.append(
             {"train_size": float(len(train_idx)), "test_size": float(len(test_idx)), **scores}
         )

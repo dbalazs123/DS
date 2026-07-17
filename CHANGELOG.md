@@ -7,6 +7,28 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- The fit-side design pass (`ROADMAP.md` friction items 5 + 9 — the deferred
+  reopening of the settled pure-composition decision; the amended rationale
+  is recorded there):
+  - `ds.pipeline.fit_pipeline` + `FitStep` — execute an ordered fit plan
+    (each entry a step kind plus a fit callable closing over that transform's
+    keyword arguments) as the fit → apply → fit chain both real projects
+    hand-strung, returning the assembled `Pipeline`. `Pipeline` itself is
+    unchanged — still pure composition, persistence untouched. Both
+    `projects/nyc_taxis` and `projects/titanic` replaced their five-pair
+    dance with a plan; persisted scoring pipelines and held-out metrics came
+    out byte-identical.
+  - `ds.evaluation.cross_validate_kfold` gains `make_pipeline` — a
+    per-fold pipeline factory (the `make_model` twin, typically
+    `lambda frame: fit_pipeline(frame, plan)`) so the transform chain is
+    re-fitted on each fold's training rows only, closing the leak where
+    every fold's test rows influenced the imputation/scaling statistics.
+    `titanic` now cross-validates its raw training split with the same plan
+    it fits the scoring pipeline from. Honest finding, recorded in the
+    ROADMAP strike: the fold statistics genuinely change but not one fold
+    prediction flips on this frame/model, so the per-fold metrics are
+    unchanged — the protocol is sound either way. `cross_validate_by_time`
+    deliberately keeps no such parameter until a project pulls it.
 - Classification-shaped Model/Evaluate helpers, serving friction items 6–8 of
   `ROADMAP.md`'s `titanic` backlog (demand-first, smallest win first; item 9
   stays queued for its own design pass):
