@@ -93,6 +93,12 @@ Things that cost a round-trip to discover; save yourself the CI failure:
   job runs the full pre-commit suite, which includes `ruff-format`. `ruff check`
   passing does **not** mean the formatter is satisfied — e.g. a two-line
   function signature ruff wants collapsed will fail the lint job.
+- **`git add` new files *before* running `pre-commit run --all-files`.**
+  pre-commit only sees git-tracked files, so a pre-flight run over freshly
+  created (still-untracked) files silently checks nothing. Also note the
+  pinned pre-commit ruff (`.pre-commit-config.yaml` rev) trails the dev-env
+  ruff, so a rule retired in the newer version (e.g. UP027) can still fail CI
+  even when `make lint`/`make format` are clean.
 - **`mypy --strict` + pandas-stubs quirks:** `DataFrame.corr(method=...)` wants a
   `Literal["pearson","kendall","spearman"]`, not `str`; and `df.loc[a, b]`
   returns a broad scalar union that `float()` rejects — index positionally via

@@ -145,5 +145,5 @@ def test_pipeline_end_to_end(tmp_path: Path) -> None:
     # the month vocabulary, fixed at the twelve calendar months.
     scoring = load_params(settings.processed_dir / "params" / "flights_scoring.json", Pipeline)
     assert [step.kind for step in scoring.steps] == ["one_hot_encode"]
-    (categories,) = [step.params.categories["month"] for step in scoring.steps]
+    (categories,) = (step.params.categories["month"] for step in scoring.steps)
     assert len(categories) == 12
