@@ -17,7 +17,7 @@ working set of the most-reached-for helpers. Built out so far:
 | Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns`, `drop_duplicate_rows`, `coerce_dtypes`, `flag_outliers`, `clip_outliers`, `impute_missing` + split-safe pairs `fit_outlier_bounds`/`apply_flag_outliers`/`apply_clip_outliers`, `fit_impute_values`/`apply_impute_missing` |
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
 | Feature | `ds.features` | `add_datetime_features` (incl. `_hour`), `one_hot_encode`, `ordinal_encode`, `collapse_categories` (top-k + "other"), `scale_features`, `bin_column` + split-safe pairs `fit_one_hot_categories`/`apply_one_hot_encode`, `fit_ordinal_categories`/`apply_ordinal_encode`, `fit_topk_categories`/`apply_collapse_categories`, `fit_scale_params`/`apply_scale_features` |
-| Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `fit_baseline` (mean / majority / naive-last / seasonal-naive), `save_model`/`load_model` (joblib persistence), `count_tokens` |
+| Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `train_test_split_random` (shuffled, optionally stratified), `fit_baseline` (mean / majority / naive-last / seasonal-naive), `save_model`/`load_model` (joblib persistence), `count_tokens` |
 | Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics`, `cross_validate_by_time` (rolling origin), `cross_validate_kfold`, `compare_models` |
 | Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_confusion_matrix`, `plot_residuals`, `plot_model_comparison` |
 
@@ -180,12 +180,14 @@ list so item references stay unambiguous; in observed-pain order:
    demands them, because the frozen `Baseline` contract is
    `tuple[float, ...]`. The project's hand-rolled `y_train.mode()` reference
    is gone, with identical held-out metrics (majority accuracy 0.615 / F1 0.0).
-7. **No split helper for order-free data.** `ds.modeling` ships only
-   `train_test_split_by_time`; the manifest has no time axis, and a 62/38
-   target wants stratification. The project calls scikit-learn's
-   `train_test_split(stratify=...)` directly — workable, but the split is
-   now the one lifecycle stage where the toolkit offers nothing for
-   non-temporal data.
+7. ~~**No split helper for order-free data.**~~ — **resolved**:
+   `ds.modeling.tabular.train_test_split_random` is the order-free twin of
+   `train_test_split_by_time` — shuffled, with an optional `stratify` column
+   whose class balance both halves preserve, seeded through numpy's global
+   generator like the rest of the stage (so `seed_everything` reproduces
+   it). The project's raw `sklearn.model_selection.train_test_split` call is
+   gone; the wrapper makes the identical scikit-learn call, so the split and
+   the held-out metrics are byte-identical (accuracy 0.799 / F1 0.731).
 8. **`cross_validate_kfold` cannot stratify.** It wraps plain `KFold`, so on
    the 62/38 target the fold class balance drifts (observed per-fold recall
    0.64–0.79 across otherwise stable folds). A stratified option

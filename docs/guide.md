@@ -311,14 +311,18 @@ are persisted separately.
 
 ### Model — `ds.modeling`
 
-Split tabular data into features and target, or split a time series
-chronologically so the test window is strictly in the future.
+Split tabular data into features and target, and hold out a test set: split
+a time series chronologically so the test window is strictly in the future,
+or order-free data randomly — stratified on the target if a class imbalance
+must survive the split. The random split draws from numpy's global
+generator, so `seed_everything` makes it reproducible.
 
 ```python
-from ds.modeling.tabular import split_features_target
+from ds.modeling.tabular import split_features_target, train_test_split_random
 from ds.modeling.timeseries import train_test_split_by_time
 
-train, test = train_test_split_by_time(df, "date", test_size=0.2)
+train, test = train_test_split_by_time(df, "date", test_size=0.2)   # temporal
+train, test = train_test_split_random(df, test_size=0.2, stratify="label")  # order-free
 x_train, y_train = split_features_target(train, "amount")
 ```
 
