@@ -7,6 +7,38 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `projects/sms_spam`: fifth **real-data** project (P10 — the fifth run of
+  the demand loop, and the first **text** one). Flags the 5,574 labelled
+  messages of the SMS Spam Collection (~13% spam; single headerless TSV
+  mirrored in the pycon-2016-tutorial repo, downloaded once into git-ignored
+  `data/raw/`) as ham or spam, chosen — by the established rule of grepping
+  which surfaces still had no real consumer — because
+  `ds.modeling.nlp.count_tokens` and the `nlp`/tiktoken extra were the
+  library's only entirely-unconsumed module and a text pipeline stresses the
+  text gaps by absence. First real consumers earned: `count_tokens`
+  (per-message `token_count`, deliberately descriptive-only — its graceful
+  degradation makes the values extras-dependent, which bars it from the
+  modeling path; the decision is recorded in the pipeline docstring) and the
+  headerless-file path through `load_raw`'s pandas-kwargs forwarding
+  (`header=None, names=..., quoting=csv.QUOTE_NONE` — the file's quotes are
+  message text, and default quoting silently swallows two rows). Second
+  consumers: the `labels=` display mapping (binary `{0: "ham", 1: "spam"}`)
+  and `bin_column` (label mix per length quantile band). Full lifecycle on
+  `ds` + scikit-learn: boundary validation, exact duplicates dropped as
+  split-leaking verbatim repeats, hand-rolled length features, a one-step
+  fit plan (standardize `char_count` — the only step the closed `StepKind`
+  vocabulary can express here; the TF-IDF vectorizer lives inside the
+  persisted sklearn model instead), stratified 5-fold CV with the plan
+  re-fitted per fold, pipeline + model persisted and the held-out split
+  scored from reloaded state. Held-out (spam = positive): accuracy 0.968 /
+  F1 0.864 vs a hand-written keyword rule (0.916 / 0.659) and the majority
+  class (0.873 / 0.000). Per the demand-first rule the project promotes
+  nothing itself; its friction is recorded as items 18–21 of `ROADMAP.md`'s
+  backlog (no vectorization step kind in the pipeline vocabulary,
+  `count_tokens`' per-call graceful degradation stalling its very first
+  consumer for ~35 minutes when tiktoken is installed but its vocabulary is
+  unreachable, a silently-wrong boundary parse only an out-of-band row
+  count caught, and no text helpers in the features stage).
 - The `diamonds` friction backlog served (P9 — `ROADMAP.md` items 14–17, in
   observed-pain order; the served items dogfooded by `projects/diamonds` in
   the same change, with every persisted artifact — CSVs *and* PNGs —
