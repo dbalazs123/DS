@@ -125,6 +125,7 @@ def plot_confusion_matrix(
     *,
     ax: Axes | None = None,
     normalize: bool = False,
+    labels: Mapping[int, str] | None = None,
 ) -> Axes:
     """Plot a confusion matrix as an annotated heatmap.
 
@@ -137,11 +138,14 @@ def plot_confusion_matrix(
         ax: Existing Axes to draw on; a new figure is created when omitted.
         normalize: If ``True``, show each cell as a fraction of its true-class
             row rather than a raw count.
+        labels: Optional display names per integer code, used as the tick
+            labels — the counts stay computed on the int codes. When given,
+            the x-axis names are rotated 45° so long names stay legible.
 
     Returns:
         The Axes the heatmap was drawn on.
     """
-    frame = confusion_frame(y_true, y_pred)
+    frame = confusion_frame(y_true, y_pred, labels=labels)
     matrix = frame.to_numpy(dtype=float)
     if normalize:
         totals = matrix.sum(axis=1, keepdims=True)
@@ -149,9 +153,12 @@ def plot_confusion_matrix(
 
     ax = _resolve_ax(ax)
     image = ax.imshow(matrix, cmap="Blues", vmin=0.0)
-    labels = list(frame.index)
-    ax.set_xticks(range(len(labels)), labels=labels)
-    ax.set_yticks(range(len(labels)), labels=labels)
+    ticks = list(frame.index)
+    if labels is None:
+        ax.set_xticks(range(len(ticks)), labels=ticks)
+    else:
+        ax.set_xticks(range(len(ticks)), labels=ticks, rotation=45, ha="right")
+    ax.set_yticks(range(len(ticks)), labels=ticks)
     ax.set_xlabel("predicted")
     ax.set_ylabel("true")
 

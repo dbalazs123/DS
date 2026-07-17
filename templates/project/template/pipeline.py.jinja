@@ -1,4 +1,4 @@
-"""{{ project_name }} — {{ description }}
+"""{{ project_name }}{% if description %} — {{ description }}{% endif %}
 
 A stage-by-stage skeleton built on the shared ``ds`` toolkit. Each numbered
 step maps to one lifecycle module; fill them in for this analysis. The body is
@@ -8,27 +8,31 @@ See ``projects/_example/pipeline.py`` for every stage worked end to end.
 
 Run it with::
 
-    uv run python projects/{{ project_slug }}/pipeline.py
+    uv run ds run {{ project_slug }}
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from ds import get_logger, get_settings, seed_everything
+from ds import Settings, get_logger, get_settings, seed_everything
 
 logger = get_logger(__name__)
 
 
-def run(output_dir: Path) -> dict[str, float]:
+def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     """Run the {{ project_slug }} pipeline end to end.
 
     Args:
         output_dir: Directory to write artifacts (figures, tables) into.
+        settings: Paths to read/write data under; resolved from the
+            environment when omitted. Tests pass a temporary one so a run
+            never touches the shared data tree.
 
     Returns:
         Evaluation metrics for the run.
     """
+    settings = settings or get_settings()
     seed_everything()
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -48,7 +52,7 @@ def run(output_dir: Path) -> dict[str, float]:
 
 def main() -> None:
     settings = get_settings()
-    metrics = run(settings.processed_dir / "{{ project_slug }}")
+    metrics = run(settings.processed_dir / "{{ project_slug }}", settings=settings)
     print("Pipeline finished. Metrics:")
     for name, value in metrics.items():
         print(f"  {name}: {value:,.3f}")

@@ -7,6 +7,36 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- The `diamonds` friction backlog served (P9 — `ROADMAP.md` items 14–17, in
+  observed-pain order; the served items dogfooded by `projects/diamonds` in
+  the same change, with every persisted artifact — CSVs *and* PNGs —
+  verified byte-identical to the pre-change run, held-out accuracy 0.655 /
+  macro F1 0.551 untouched):
+  - `labels=` display mapping (item 14) — an optional `Mapping[int, str]` on
+    `ds.evaluation.confusion_frame` / `ds.evaluation.per_class_metrics` /
+    `ds.viz.plot_confusion_matrix` that puts class *names* on the
+    consumer-facing axes and tick labels; the metric math stays on the int
+    codes, codes absent from the mapping keep their integer form, and
+    `fit_baseline`'s numeric-label contract is untouched. With `labels=` the
+    confusion plot rotates its x-tick names 45° so long names stay legible;
+    without it, behaviour is unchanged. The project deleted its `_named()`
+    and `_relabel_confusion_axes()` workarounds.
+  - Item 15 (a row-filtering counterpart to `assert_in_range`) — **struck,
+    not built**: a three-line mask observed once is below the helper bar;
+    the second-project trigger is recorded in `ROADMAP.md`.
+  - Template fixes (item 16) — the `ds new` scaffold now matches the shape
+    every real pipeline keeps: the stub `run()` takes
+    `settings: Settings | None = None`, the scaffolded test injects a
+    temporary data directory instead of writing into the shared data tree,
+    the scaffolded README and module docstring say `ds run <slug>` (what
+    `ds new` itself prints), and an empty description renders cleanly with
+    no dangling "—".
+  - Item 17 (the multiclass metrics wrapper) — **resolved by documenting
+    the idiom, not a helper**: bind
+    `functools.partial(classification_metrics, average="macro")` for the
+    two-argument `metrics_fn` hooks, recorded in the `average` parameter's
+    docstring and the docs Guide; the project's wrapper `def` is now that
+    one-liner.
 - `projects/diamonds`: fourth **real-data** project (P8 — the fourth run of
   the demand loop, and the first **multiclass** one). Grades the cut of the
   53,940 classic ggplot2 diamonds (seaborn-data mirror; downloaded once into

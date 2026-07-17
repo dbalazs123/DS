@@ -114,12 +114,34 @@ def test_confusion_frame_labels_axes() -> None:
     assert cm.loc[1, 0] == 1  # one true-1 sample predicted 0
 
 
+def test_confusion_frame_display_labels_rename_both_axes() -> None:
+    cm = confusion_frame([0, 1, 1, 0], [0, 1, 0, 0], labels={0: "no", 1: "yes"})
+    assert list(cm.index) == ["no", "yes"]
+    assert list(cm.columns) == ["no", "yes"]
+    assert cm.index.name == "true"  # axis names survive the renaming
+    assert cm.columns.name == "predicted"
+    assert cm.loc["no", "no"] == 2  # counts identical to the int-coded frame
+
+
+def test_confusion_frame_display_labels_keep_unmapped_codes() -> None:
+    cm = confusion_frame([0, 1], [0, 1], labels={1: "yes"})
+    assert list(cm.index) == [0, "yes"]
+
+
 def test_per_class_metrics_breaks_out_each_label() -> None:
     frame = per_class_metrics([0, 1, 1], [0, 1, 1])
     assert set(frame.columns) == {"precision", "recall", "f1", "support"}
     assert frame.index.name == "label"
     assert frame.loc[1, "support"] == 2
     assert frame.loc[1, "f1"] == 1.0
+
+
+def test_per_class_metrics_display_labels_rename_index_only() -> None:
+    frame = per_class_metrics([0, 1, 1], [0, 1, 1], labels={0: "no", 1: "yes"})
+    assert list(frame.index) == ["no", "yes"]
+    assert frame.index.name == "label"
+    assert set(frame.columns) == {"precision", "recall", "f1", "support"}
+    assert frame.loc["yes", "support"] == 2
 
 
 def test_fit_baseline_mean_ignores_nulls() -> None:

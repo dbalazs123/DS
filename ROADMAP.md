@@ -205,11 +205,32 @@ orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
   rule the project promotes nothing itself; its friction list is the new
   backlog below.
 
-**Next up:** serve the `diamonds` backlog (items 14–17 below), in
-observed-pain order. Item 9's parked question —
-`cross_validate_by_time(make_pipeline=...)` — stays parked: the trigger has
-still not fired. Deprioritized until a project pulls them: more EDA helpers,
-more cookbook recipes, more CLI.
+- **P9 — serve the `diamonds` backlog: DONE.** Items 14–17 in observed-pain
+  order — two served, one struck, one resolved by documentation (each
+  rationale inline in the backlog below):
+  - `labels=` display mapping (item 14) — an optional `Mapping[int, str]` on
+    `confusion_frame` / `per_class_metrics` / `plot_confusion_matrix` puts
+    class *names* on the consumer-facing axes while the metric math stays on
+    the int codes. The project deleted `_named()` and
+    `_relabel_confusion_axes()`; every persisted artifact (CSVs *and* PNGs)
+    verified byte-identical (sha256) to the pre-change run — held-out
+    accuracy 0.655 / macro F1 0.551 untouched.
+  - Item 15 (a row-filtering counterpart to the range assert) — **struck,
+    not built** (see the backlog).
+  - Template fixes (item 16) — the stub now scaffolds the shape all four
+    real pipelines actually keep: an injectable `settings` parameter, a test
+    that injects a temporary data directory, `ds run <slug>` as the run
+    instruction, and clean rendering of an empty description.
+  - Item 17 (the multiclass metrics wrapper) — **resolved by documenting
+    the `functools.partial` idiom**, not a helper (see the backlog); the
+    project's wrapper `def` is now that one-liner.
+
+**Next up:** the `diamonds` backlog is cleared, so the queue is empty again —
+the next step is a fifth demand loop: a new real-data project chosen to
+stress surfaces still without a real consumer, regenerating the backlog.
+Item 9's parked question — `cross_validate_by_time(make_pipeline=...)` —
+stays parked: the trigger has still not fired. Deprioritized until a project
+pulls them: more EDA helpers, more cookbook recipes, more CLI.
 
 ## Friction backlog (from `projects/nyc_taxis`)
 
@@ -375,50 +396,62 @@ calendar columns.
 The fourth run of the demand loop — the first multiclass one. Numbering
 continues from the `flights` list; in observed-pain order:
 
-14. **The classification metric/plot surface is label-blind.** Everything is
-    typed `Sequence[int]`, so the five string cut grades had to be int-coded
-    before any metric ran — fine in itself (the ordinal encoder did it in
-    one call) — but then *every consumer-facing artifact needed the codes
-    hand-mapped back to names*: the project carries a `_named()` helper to
-    relabel `confusion_frame`/`per_class_metrics` output before persisting,
-    and a `_relabel_confusion_axes()` helper to re-set
-    `plot_confusion_matrix`'s integer tick labels on the returned Axes. At
-    two classes (titanic) 0/1 was readable; at five, `3` for Premium is not.
-    Three hand-rolled mapping sites in one pipeline is the largest observed
-    pain of the run. Candidate shape: an optional `labels=` mapping on
-    `confusion_frame`/`per_class_metrics`/`plot_confusion_matrix` (display
-    names only — the metric math staying on int codes is fine); accepting
-    string labels outright would also touch `fit_baseline`'s deliberately
-    numeric contract (item 6), which this project did *not* need changed.
-15. **Validation asserts, nothing filters.** The 20 physically impossible
-    zero-dimension rows must be *removed*, and no helper does that — the
-    project hand-rolls a boolean mask (`drop_impossible_dimensions`) and
-    then re-states the same bound in `assert_in_range(min_value=0,
-    inclusive="right")` for the surviving rows, so the rule lives in two
-    places that can drift. A `drop_out_of_range` (or a `filter=` mode on the
-    range check) would collapse the pair. Observed once; the mask is three
-    lines, so this may not clear the helper bar until a second project
-    repeats it — recorded for the trigger.
-16. **The project template scaffolds a shape no real project keeps.** First
-    real `ds new` dogfooding (it ran cleanly and the slug/layout were
-    right). Three divergences, each rewritten within minutes of scaffolding:
-    the stub `run(output_dir)` lacks the `settings: Settings | None`
-    parameter all four real pipelines need (it is how the end-to-end test
-    injects a temporary data directory — the scaffolded test calls `run()`
-    with no settings, which for a real pipeline would write into the shared
-    data tree); the scaffolded README says `uv run python
-    projects/<slug>/pipeline.py` while `ds new` itself prints "run it with
-    `ds run <slug>`"; and an empty `description` (the default) leaves a
-    dangling "`<Name> — `" in the module docstring and a blank README
-    section. Small, concrete, template-only fixes.
-17. **`classification_metrics`' binary default forces a wrapper at every
-    multiclass call site.** `average="binary"` raises beyond two classes,
-    and the `metrics_fn` hooks (`cross_validate_kfold`, `compare_models`)
-    take a two-argument callable, so the project defines
-    `macro_classification_metrics` and threads it through five call sites.
-    The wrapper is four lines and `functools.partial` would do; recorded
-    because the *next* multiclass project will write the identical wrapper —
-    may not clear the helper bar, but the recurrence trigger is precise.
+14. ~~**The classification metric/plot surface is label-blind.**~~ —
+    **resolved in P9**: an optional `labels: Mapping[int, str]` display
+    mapping on `confusion_frame` / `per_class_metrics` /
+    `plot_confusion_matrix`, exactly the candidate shape recorded — display
+    names only, the metric math stays on the int codes, and `fit_baseline`'s
+    deliberately numeric contract (item 6) is untouched. A mapping rather
+    than a positional sequence because the frames' axes are the sorted union
+    of *observed* codes: a class absent from a split would silently misalign
+    positional names, while a mapping stays correct (and codes absent from
+    the mapping keep their integer form, plain-rename semantics). With
+    `labels=` the plot rotates its x-tick names 45° — five multi-word grades
+    overlap horizontally — and without it every code path is byte-for-byte
+    the old one, so titanic's readable 0/1 output is untouched. The project
+    deleted `_named()` and `_relabel_confusion_axes()` for `labels=` at the
+    four consumer-facing call sites; all persisted artifacts (CSVs *and*
+    PNGs) verified byte-identical (sha256) to the pre-change run.
+15. ~~**Validation asserts, nothing filters.**~~ — **struck in P9, not
+    built**, as the item's own caveat anticipated. The observed pain: the 20
+    physically impossible zero-dimension rows must be *removed*, the project
+    hand-rolls a boolean mask (`drop_impossible_dimensions`) and re-states
+    the same bound in `assert_in_range(min_value=0, inclusive="right")`, so
+    the rule lives in two places that can drift. But the mask is three lines
+    of well-documented pandas observed once — a `drop_out_of_range` would
+    wrap it behind a new name to learn without removing meaningful code,
+    below the helper bar (the item-13 precedent), and the drift risk, while
+    real, has bitten nobody yet. Won't build until a second project
+    hand-rolls the same mask, which will also show which shape recurs: a
+    standalone row-dropper or a `filter=` mode on the range check. The
+    project keeps its mask.
+16. ~~**The project template scaffolds a shape no real project keeps.**~~ —
+    **resolved in P9**, all three divergences the first real `ds new`
+    dogfooding surfaced: the stub `run()` now carries the
+    `settings: Settings | None = None` parameter every real pipeline needs
+    (resolved via `settings or get_settings()`, threaded through `main()`),
+    and the scaffolded test injects `Settings(data_dir=tmp_path / "data")` —
+    a scaffold's first test run no longer writes into the shared data tree;
+    the scaffolded README and module docstring say `ds run <slug>`, matching
+    what `ds new` itself prints; and an empty `description` (the default)
+    renders cleanly — conditional Jinja, so no dangling "`<Name> — `"
+    docstring and no blank README paragraph. Pinned by the CLI tests and
+    verified by scaffolding throwaway projects with and without a
+    description: green out of the box, matching the real pipelines' shape.
+17. ~~**`classification_metrics`' binary default forces a wrapper at every
+    multiclass call site.**~~ — **resolved in P9 by documenting the idiom,
+    not building a helper**: bind the average with
+    `functools.partial(classification_metrics, average="macro")` and hand
+    that to the `metrics_fn` hooks. The idiom is recorded where a multiclass
+    consumer will actually meet the problem — the `average` parameter's own
+    docstring (where the `"binary"` raise sends you) and the Guide's
+    cross-validation section — and the project's wrapper `def` is now that
+    one-liner (its macro-vs-weighted rationale kept as a comment), numbers
+    identical. A library helper was not built: it would alias a stdlib
+    one-liner behind a new name, and changing the `"binary"` default would
+    silently change what precision/recall mean for every two-class consumer
+    (titanic passes no `average` at all). Revisit only if a project needs an
+    averaging shape `partial` cannot express.
 
 Notes from the same run, for the record:
 

@@ -59,6 +59,13 @@ def test_plot_confusion_matrix_normalizes_rows() -> None:
     assert "1.00" in texts
 
 
+def test_plot_confusion_matrix_display_labels_name_the_ticks() -> None:
+    ax = plot_confusion_matrix([0, 1, 1, 0], [0, 1, 0, 0], labels={0: "no", 1: "yes"})
+    assert [label.get_text() for label in ax.get_xticklabels()] == ["no", "yes"]
+    assert [label.get_text() for label in ax.get_yticklabels()] == ["no", "yes"]
+    assert len(ax.texts) == 4  # counts still annotated per cell
+
+
 def test_plot_residuals_draws_points_and_zero_line() -> None:
     ax = plot_residuals([1.0, 2.0, 3.0], [1.5, 1.5, 3.5])
     assert ax.collections  # the scatter

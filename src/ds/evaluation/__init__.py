@@ -38,7 +38,11 @@ def classification_metrics(
     Args:
         y_true: Ground-truth labels.
         y_pred: Predicted labels.
-        average: Averaging strategy for multiclass precision/recall/F1.
+        average: Averaging strategy for multiclass precision/recall/F1. The
+            ``"binary"`` default raises beyond two classes — pass ``"macro"``
+            (or ``"weighted"``) there, and for the two-argument ``metrics_fn``
+            hooks (:func:`cross_validate_kfold`, :func:`compare_models`) bind
+            it with ``functools.partial(classification_metrics, average="macro")``.
 
     Returns:
         A dict with ``accuracy``, ``precision``, ``recall`` and ``f1``.
@@ -53,7 +57,12 @@ def classification_metrics(
     }
 
 
-def confusion_frame(y_true: Sequence[int], y_pred: Sequence[int]) -> pd.DataFrame:
+def confusion_frame(
+    y_true: Sequence[int],
+    y_pred: Sequence[int],
+    *,
+    labels: Mapping[int, str] | None = None,
+) -> pd.DataFrame:
     """Confusion matrix as a labeled DataFrame.
 
     Rows are the true labels, columns the predicted ones, so ``frame.loc[t, p]``
@@ -63,21 +72,32 @@ def confusion_frame(y_true: Sequence[int], y_pred: Sequence[int]) -> pd.DataFram
     Args:
         y_true: Ground-truth labels.
         y_pred: Predicted labels.
+        labels: Optional display names per integer code, applied to both axes
+            after the matrix is computed — the metric math stays on the int
+            codes. Codes absent from the mapping keep their integer form.
 
     Returns:
         A square DataFrame indexed by true label (index name ``"true"``) with
         predicted labels as columns (column name ``"predicted"``).
     """
-    labels = sorted(set(y_true) | set(y_pred))
-    matrix = metrics.confusion_matrix(y_true, y_pred, labels=labels)
-    return pd.DataFrame(
+    codes = sorted(set(y_true) | set(y_pred))
+    matrix = metrics.confusion_matrix(y_true, y_pred, labels=codes)
+    frame = pd.DataFrame(
         matrix,
-        index=pd.Index(labels, name="true"),
-        columns=pd.Index(labels, name="predicted"),
+        index=pd.Index(codes, name="true"),
+        columns=pd.Index(codes, name="predicted"),
     )
+    if labels is not None:
+        frame = frame.rename(index=dict(labels), columns=dict(labels))
+    return frame
 
 
-def per_class_metrics(y_true: Sequence[int], y_pred: Sequence[int]) -> pd.DataFrame:
+def per_class_metrics(
+    y_true: Sequence[int],
+    y_pred: Sequence[int],
+    *,
+    labels: Mapping[int, str] | None = None,
+) -> pd.DataFrame:
     """Per-class precision, recall, F1 and support.
 
     Where :func:`classification_metrics` gives one averaged number per metric,
@@ -87,19 +107,25 @@ def per_class_metrics(y_true: Sequence[int], y_pred: Sequence[int]) -> pd.DataFr
     Args:
         y_true: Ground-truth labels.
         y_pred: Predicted labels.
+        labels: Optional display names per integer code, applied to the index
+            after the metrics are computed — the metric math stays on the int
+            codes. Codes absent from the mapping keep their integer form.
 
     Returns:
         A DataFrame indexed by class label (index name ``"label"``) with
         ``precision``, ``recall``, ``f1`` and ``support`` columns.
     """
-    labels = sorted(set(y_true) | set(y_pred))
+    codes = sorted(set(y_true) | set(y_pred))
     precision, recall, f1, support = metrics.precision_recall_fscore_support(
-        y_true, y_pred, labels=labels, zero_division=0
+        y_true, y_pred, labels=codes, zero_division=0
     )
-    return pd.DataFrame(
+    frame = pd.DataFrame(
         {"precision": precision, "recall": recall, "f1": f1, "support": support},
-        index=pd.Index(labels, name="label"),
+        index=pd.Index(codes, name="label"),
     )
+    if labels is not None:
+        frame = frame.rename(index=dict(labels))
+    return frame
 
 
 # Any fold-scoring function with the shape of `regression_metrics` /
