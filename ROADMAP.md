@@ -26,9 +26,10 @@ the `fit_*`/`apply_*` pairs, fitted in one call from a `FitStep` plan via
 `fit_pipeline`), `ds` CLI (`ds version`, `ds new`, `ds run`), a
 per-stage docs Guide with cross-stage recipes, a `test-extras` CI job,
 single-sourced version, and an extended project template. `projects/` holds the
-synthetic worked example (`_example`) and four **real-data** projects:
+synthetic worked example (`_example`) and five **real-data** projects:
 `nyc_taxis` (regression), `titanic` (binary classification), `flights`
-(forecasting) and `diamonds` (multiclass classification).
+(forecasting), `diamonds` (multiclass classification) and `sms_spam` (text /
+binary spam classification).
 
 ## Goal evaluation (2026-07)
 
@@ -42,9 +43,9 @@ extending recent momentum. Verdicts, and what they imply:
   library work") had never run, while eight consecutive PRs invested in
   supply-side library polish. **Consequence:** every library addition should
   now be pulled by a project need, not pushed from a candidate list. The
-  friction backlogs below are the queue (the `nyc_taxis`, `titanic` and
-  `flights` lists are fully served; the fourth demand loop — `diamonds` —
-  regenerated the queue with items 14–17).
+  friction backlogs below are the queue (the `nyc_taxis`, `titanic`, `flights`
+  and `diamonds` lists are fully served; the fifth demand loop — `sms_spam` —
+  regenerated the queue with items 18–21).
 - **Fit-once / score-later** — *stopped one step short of its own goal;
   since closed (P2).* Fitted parameters and the `Pipeline` persist as strict
   JSON, but at evaluation time the fitted **model** could not be persisted at
@@ -225,12 +226,43 @@ orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
     the `functools.partial` idiom**, not a helper (see the backlog); the
     project's wrapper `def` is now that one-liner.
 
-**Next up:** the `diamonds` backlog is cleared, so the queue is empty again —
-the next step is a fifth demand loop: a new real-data project chosen to
-stress surfaces still without a real consumer, regenerating the backlog.
-Item 9's parked question — `cross_validate_by_time(make_pipeline=...)` —
-stays parked: the trigger has still not fired. Deprioritized until a project
-pulls them: more EDA helpers, more cookbook recipes, more CLI.
+- **P10 — regenerate demand with a fifth real-data project (text): DONE.**
+  `projects/sms_spam` flags the 5,574 labelled messages of the SMS Spam
+  Collection (~13% spam; single-file mirror in the pycon-2016-tutorial repo)
+  as ham or spam — chosen, by the P8 rule of grepping which surfaces still
+  had no real consumer, because `ds.modeling.nlp.count_tokens` and the
+  `nlp`/tiktoken extra were the library's only entirely-unconsumed module,
+  and a text pipeline predictably stresses the text gaps by absence (no text
+  helpers in the features stage, no vectorization step kind in
+  `ds.pipeline`). First real consumers earned: `count_tokens` (per-message
+  `token_count` — descriptive only, because its graceful degradation makes
+  the values depend on the installed extras; see the backlog notes) and the
+  headerless-TSV path through `load_raw`'s pandas-kwargs forwarding
+  (`header=None, names=..., quoting=csv.QUOTE_NONE` — the file's quotes are
+  message text, and default quoting silently swallows two rows). Second
+  consumers: the `labels=` display mapping (binary `{0: "ham", 1: "spam"}`)
+  and `bin_column` (label mix per message-length quantile band). Full
+  lifecycle on `ds` + scikit-learn: boundary validation, exact duplicates
+  dropped as split-leaking verbatim repeats (the diamonds call, for the
+  vectorizer-memorizes-text reason), hand-rolled length features, a one-step
+  fit plan (standardize `char_count` — the *only* step of this pipeline the
+  closed vocabulary can express; the TF-IDF vectorizer lives inside the
+  sklearn model object), stratified 5-fold CV with the plan re-fitted per
+  fold, pipeline + model persisted and the held-out split scored from
+  reloaded state. Held-out (spam = positive): accuracy 0.968 / F1 0.864 vs
+  the keyword rule (0.916 / 0.659) and the majority class (0.873 / 0.000);
+  CV F1 0.853 ± 0.009. Precision 0.938 vs recall 0.802 is the honest
+  headline: the model rarely cries spam on ham but waves a fifth of spam
+  through. Per the demand-first rule the project promotes nothing itself;
+  its friction list is the new backlog below.
+
+**Next up:** the fifth demand loop refilled the queue — serve the `sms_spam`
+backlog (items 18–21) in observed-pain order, each item's own caveats
+weighed. Item 9's parked question —
+`cross_validate_by_time(make_pipeline=...)` — stays parked: the trigger has
+still not fired (this project's CV is k-fold, not rolling-origin).
+Deprioritized until a project pulls them: more EDA helpers, more cookbook
+recipes, more CLI.
 
 ## Friction backlog (from `projects/nyc_taxis`)
 
@@ -478,6 +510,115 @@ numeric-label scoping held exactly); `bin_column`'s quantile bins as an
 EDA device; `drop_duplicate_rows`; `train_test_split_random(stratify=)` at
 five classes; and the whole persistence story (`fit_pipeline` →
 `save_params`/`load_params`, `save_model`/`load_model`).
+
+## Friction backlog (from `projects/sms_spam`)
+
+The fifth run of the demand loop — the first text one. Numbering continues
+from the `diamonds` list; in observed-pain order:
+
+18. **The pipeline's step vocabulary cannot hold the fitted heart of a text
+    pipeline.** The TF-IDF vectorizer is the one genuinely *fitted* text
+    transform this project has, and it cannot be a `PipelineStep`: the
+    closed `StepKind` vocabulary has no vectorization kind, so the fitted
+    vocabulary + idf weights persist inside the sklearn model joblib while
+    the persisted ds "scoring pipeline" holds only a `char_count` scaler —
+    reloading the scoring pipeline alone cannot score a message, and the
+    fit-once/apply-many story splits across two artifacts with different
+    serialization formats (strict JSON vs joblib). The pain is real but the
+    candidate shape is genuinely open, and the honest caveat is structural:
+    every existing step is DataFrame-in/DataFrame-out over named columns,
+    while a vectorizer maps one text column to a sparse matrix with
+    thousands of learned columns — forcing that through the dense
+    frame-to-frame contract would be dishonest about cost, and wrapping the
+    sklearn object whole would make the strict-JSON `save_params` story
+    carry a pickle. Don't design this from one consumer: record it, and let
+    a second text project show whether the recurring need is a vectorize
+    step kind, a documented "model-side transforms live in the estimator"
+    convention (what this project does), or something else.
+19. **`count_tokens`' graceful degradation is per-call and invisible to the
+    caller.** With tiktoken *installed* but its vocabulary endpoint
+    unreachable (this sandbox's proxy; any offline machine with extras),
+    every call re-attempts the download before falling back — ~0.4 s
+    measured per call, which turns mapping the 5,171 messages into a
+    ~35-minute stall; the extras run of this project hung exactly there.
+    And a returned count carries no signal about which path produced it, so
+    a caller cannot guard the stall without reproducing the library's own
+    probe — which is what the project does (`_resolve_token_counter`: try
+    the encoding once, fall back wholesale). Candidate shapes: memoize the
+    failed-encoding outcome inside `count_tokens` so the fallback is only
+    slow once, and/or expose the probe so consumers can pick a counter once
+    per run. Observed once, but this is the extra's *first* consumer and
+    the pain found it immediately — the strongest candidate for the next
+    serving pass.
+20. **A silently-wrong boundary parse had to be caught out-of-band.** The
+    raw TSV is headerless and its double quotes are message text; under
+    pandas' default quoting the read *succeeds* with 5,572 rows instead of
+    5,574 — two messages swallowed into a neighbour, one with an embedded
+    newline — and every downstream validation passes on the corrupted
+    frame. `load_raw` forwarding pandas kwargs (`quoting=csv.QUOTE_NONE`)
+    fixes the parse, but nothing in `ds.validation` can express the check
+    that *caught* it (an expected row count / shape assertion against the
+    published dataset size — this run compared `wc -l` by hand). Candidate
+    shape: an `assert_row_count(df, expected)`-style boundary check.
+    Observed once; a one-line `if len(df) != ...: raise` is easy to
+    hand-roll, so the bar question is whether a second project meets the
+    same silent-parse class of failure.
+21. **The features stage has no text helpers.** `char_count` and
+    `token_count` are hand-rolled project code — two well-documented lines
+    each, below the helper bar individually (the item-13/15 precedent), but
+    they are exactly the first two columns any text project engineers.
+    Won't build until a second text project hand-rolls the same columns and
+    shows which shape recurs (a `text_features(df, column)` frame helper vs
+    more single-column counters alongside `count_tokens`). The project
+    keeps its two lines.
+
+Notes from the same run, for the record:
+
+- **`count_tokens` half-earned its keep — the honest packaging verdict.**
+  It finally has a real consumer, but only a *descriptive* one: its
+  documented graceful degradation (BPE counts with tiktoken and its
+  vocabulary, whitespace counts otherwise) means its values depend on the
+  installed extras and network, which bars it from any feature a fitted
+  model consumes — a pipeline that must reproduce across CI's no-extras and
+  `--extra all` jobs cannot put an environment-dependent column in front of
+  the estimator. So the first real text project scopes it to EDA artifacts
+  and hands the modeling-side tokenization to the vectorizer. That is the
+  P4 finding again at the function level: the degradation contract that
+  keeps the module importable is exactly what keeps the function out of
+  the modeling path (and, per item 19, the *shape* of that degradation —
+  per-call, undetectable — is itself the sharpest friction this run hit).
+  Recorded, not hidden; no action until a consumer wants the
+  accurate-count path badly enough to declare a hard tiktoken dependency.
+- **The `labels=` mapping's second consumer composed cleanly.** Binary
+  `{0: "ham", 1: "spam"}` on the same three surfaces diamonds earned it
+  for — no friction, mapping semantics held at two classes.
+- **`bin_column`'s second consumer repeated the diamonds shape exactly**
+  (quantile bins as an exploration device, never a model feature) — the
+  helper earns its keep.
+- **Items 13 and 15's second-project triggers did not fire.** No time axis
+  is hand-assembled (no time dimension at all), and no out-of-range row
+  mask is hand-rolled (the only row-dropping is `drop_duplicate_rows`).
+  Both stay parked.
+- **Imputation stays unexercised at severity beyond titanic.** The
+  collection has zero missing values — recorded, as with diamonds, so the
+  gap isn't mistaken for coverage.
+- **The P9-fixed template held up in its first real use.** `ds new
+  "SMS Spam"` scaffolded the shape this pipeline kept: the injectable
+  `settings` parameter, the temp-`Settings` test pattern, and the
+  `ds run sms_spam` instruction all survived into the finished project
+  unchanged; only the placeholder stage comments and skeleton tests were
+  replaced, which is what placeholders are for.
+
+Where the library did *not* fight: `load_raw`'s kwargs forwarding took the
+headerless quote-disabled read without a project-local loader; the
+stratified `cross_validate_kfold(make_pipeline=..., stratify=True)`
+composition at a 13% positive rate; `fit_baseline("majority")` on the
+int-coded target (item 6's numeric-label scoping held again);
+`drop_duplicate_rows`; `train_test_split_random(stratify=)`;
+`ordinal_encode` as a stateless explicit-order label coder; and the whole
+persistence story for what the vocabulary *can* express (`fit_pipeline` →
+`save_params`/`load_params`, `save_model`/`load_model` for the sklearn
+side).
 
 Kept for the record — CLAUDE.md's engineering notes point here. Each was
 re-checked in the 2026-07 evaluation; verdicts inline.
