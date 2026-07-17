@@ -164,12 +164,20 @@ from ds.features import (
 )
 
 df = add_datetime_features(df, "date")               # year, month, dayofweek, hour, ...
+df = add_datetime_features(df, "date", features=["month", "elapsed_months"])  # scoped subset
 df = collapse_categories(df, ["zone"], k=15)         # top-15 levels + "other"
 df = one_hot_encode(df, ["category", "zone"])        # indicator columns
 df = ordinal_encode(df, categories={"size": ["S", "M", "L"]})  # ranked codes
 df = scale_features(df, ["amount"], method="minmax")  # rescale to [0, 1]
 df = bin_column(df, "amount", bins=4, method="quantile")  # -> amount_bin
 ```
+
+`add_datetime_features` emits the full calendar set by default; on coarse
+data pass `features=` to scope it to what actually applies (on a monthly
+series `_dayofweek`/`_is_weekend` would just encode the weekday each month's
+first day lands on). The opt-in `"elapsed_months"` feature is the trend term
+a linear forecaster needs: a monotone count of whole months since a fixed
+calendar epoch, so scoring later rows involves no learned origin.
 
 `collapse_categories` is the high-cardinality strategy: a column with hundreds
 of levels (the taxi data's ~200 pickup/dropoff zones) keeps its `k` most
@@ -485,6 +493,7 @@ from ds.viz import (
     plot_model_comparison,
     plot_outliers,
     plot_residuals,
+    plot_series,
     set_theme,
 )
 
@@ -494,6 +503,7 @@ plot_outliers(df)                        # bar chart of outlier counts per colum
 plot_confusion_matrix(y_true, y_pred)    # annotated heatmap
 plot_residuals(y_true, y_pred)           # residual-vs-predicted diagnostic
 plot_model_comparison(comparison)        # one metric across models, as bars
+plot_series(df["date"], df["amount"])    # one series over a time axis
 ```
 
 Each plot returns a matplotlib `Axes` and accepts an existing `ax=`, so they
@@ -502,6 +512,24 @@ compose into multi-panel figures. They pair with the `ds.eda`,
 `missing_value_report`, `plot_outliers` visualizes `flag_outliers`,
 `plot_confusion_matrix` visualizes `confusion_frame`, and
 `plot_model_comparison` visualizes `compare_models`).
+
+`plot_series` is the time-series workhorse: its `predictions=` mapping
+overlays dashed, named forecast lines over the same time axis, and its
+colours come from the Axes' colour cycle, so repeated calls on one `ax`
+compose. The standard forecast-vs-actual figure is two calls — the training
+tail first, then the held-out window with the model's and a
+`fit_baseline` reference's predictions overlaid:
+
+```python
+ax = plot_series(history["date"], history["amount"], label="history")
+plot_series(
+    test["date"],
+    y_test,
+    predictions={"model": y_pred, "seasonal naive": baseline.predict(len(y_test))},
+    label="actual",
+    ax=ax,
+)
+```
 
 ### Cross-cutting
 

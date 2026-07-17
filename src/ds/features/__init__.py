@@ -19,6 +19,22 @@ from ds._serde import (
 
 ScaleMethod = Literal["standard", "minmax"]
 BinMethod = Literal["width", "quantile"]
+DatetimeFeature = Literal[
+    "year", "month", "day", "dayofweek", "hour", "is_weekend", "elapsed_months"
+]
+
+# Calendar-position features — the default emission of add_datetime_features.
+_CALENDAR_FEATURES: tuple[DatetimeFeature, ...] = (
+    "year",
+    "month",
+    "day",
+    "dayofweek",
+    "hour",
+    "is_weekend",
+)
+# Full menu, in emission order; elapsed_months is opt-in (a trend term, not a
+# calendar position, and near-collinear with year).
+_DATETIME_FEATURES: tuple[DatetimeFeature, ...] = (*_CALENDAR_FEATURES, "elapsed_months")
 
 
 @dataclass(frozen=True)
@@ -269,19 +285,48 @@ def _decode_categories(value: Any, type_name: str) -> dict[str, tuple[Any, ...]]
     return decoded
 
 
-def add_datetime_features(df: pd.DataFrame, column: str, *, drop: bool = False) -> pd.DataFrame:
-    """Expand a datetime column into calendar features.
+def add_datetime_features(
+    df: pd.DataFrame,
+    column: str,
+    *,
+    features: Sequence[DatetimeFeature] | None = None,
+    drop: bool = False,
+) -> pd.DataFrame:
+    """Expand a datetime column into calendar (and optional trend) features.
 
-    Adds ``<column>_year``, ``_month``, ``_day``, ``_dayofweek``, ``_hour``
-    and ``_is_weekend`` columns — the workhorse features for most time-series
-    and tabular models with a temporal component. Hour of day is included
-    because it carries the dominant signal for intraday data (a lesson from
-    the real-data taxi-fare project); on date-only data it is constantly zero,
-    where :func:`ds.preprocessing.drop_constant_columns` removes it.
+    By default adds ``<column>_year``, ``_month``, ``_day``, ``_dayofweek``,
+    ``_hour`` and ``_is_weekend`` columns — the workhorse features for most
+    time-series and tabular models with a temporal component. Hour of day is
+    included because it carries the dominant signal for intraday data (a
+    lesson from the real-data taxi-fare project); on date-only data it is
+    constantly zero, where :func:`ds.preprocessing.drop_constant_columns`
+    removes it.
+
+    ``features`` scopes the emission to exactly the named subset: on coarse
+    data much of the full set does not apply (on a monthly series
+    ``_dayofweek``/``_is_weekend`` are non-constant *noise* — the weekday the
+    month's first day lands on — that no downstream check catches). Selection
+    is explicit rather than inferred from the data's resolution, so the same
+    call emits the same columns on any frame — including a later scoring
+    batch too small to infer from. Columns come out in the documented order
+    regardless of the order requested.
+
+    One selectable feature is opt-in rather than part of the default:
+    ``"elapsed_months"`` emits the whole calendar months elapsed since a fixed
+    epoch (January of year 0, i.e. ``year * 12 + month - 1``) — the monotone
+    counter a linear forecaster uses as its trend term. The epoch is a
+    constant of the library, not learned from the frame, so scoring later
+    rows is stateless: the same timestamp maps to the same value in any run
+    (and for a trend term only differences matter). It stays out of the
+    default set because it is a modeling device, not a calendar position, and
+    is near-collinear with ``_year``.
 
     Args:
         df: The source DataFrame.
         column: Name of a datetime (or datetime-parseable) column.
+        features: Features to emit, named without the column prefix (e.g.
+            ``["month", "elapsed_months"]``); ``None`` emits the default
+            calendar set (everything except ``"elapsed_months"``).
         drop: If ``True``, drop the original column from the result.
 
     Returns:
@@ -289,17 +334,35 @@ def add_datetime_features(df: pd.DataFrame, column: str, *, drop: bool = False) 
 
     Raises:
         KeyError: If ``column`` is not present.
+        ValueError: If ``features`` is empty or names an unknown feature.
     """
     if column not in df.columns:
         raise KeyError(column)
+    requested = _CALENDAR_FEATURES if features is None else tuple(features)
+    if not requested:
+        raise ValueError("features must name at least one datetime feature")
+    unknown = sorted(set(requested) - set(_DATETIME_FEATURES))
+    if unknown:
+        raise ValueError(
+            f"unknown datetime features {unknown}; choose from {list(_DATETIME_FEATURES)}"
+        )
     out = df.copy()
     ts = pd.to_datetime(out[column])
-    out[f"{column}_year"] = ts.dt.year
-    out[f"{column}_month"] = ts.dt.month
-    out[f"{column}_day"] = ts.dt.day
-    out[f"{column}_dayofweek"] = ts.dt.dayofweek
-    out[f"{column}_hour"] = ts.dt.hour
-    out[f"{column}_is_weekend"] = ts.dt.dayofweek.isin((5, 6))
+    selected = set(requested)
+    if "year" in selected:
+        out[f"{column}_year"] = ts.dt.year
+    if "month" in selected:
+        out[f"{column}_month"] = ts.dt.month
+    if "day" in selected:
+        out[f"{column}_day"] = ts.dt.day
+    if "dayofweek" in selected:
+        out[f"{column}_dayofweek"] = ts.dt.dayofweek
+    if "hour" in selected:
+        out[f"{column}_hour"] = ts.dt.hour
+    if "is_weekend" in selected:
+        out[f"{column}_is_weekend"] = ts.dt.dayofweek.isin((5, 6))
+    if "elapsed_months" in selected:
+        out[f"{column}_elapsed_months"] = ts.dt.year * 12 + ts.dt.month - 1
     if drop:
         out = out.drop(columns=[column])
     return out

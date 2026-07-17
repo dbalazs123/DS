@@ -29,19 +29,23 @@ fetch pattern as `nyc_taxis` and `titanic`). It was chosen deliberately:
 
 The pipeline downloads the CSV once into `data/raw/` (git-ignored) and runs
 fetch → validate → assemble the time axis → explore (incl. the seasonal
-profile) → stateless calendar/trend features (`add_datetime_features` + a
-hand-rolled `month_index` trend) → chronological split → fit the one-step
-transform plan (`ds.pipeline.fit_pipeline`: the month one-hot vocabulary) →
-rolling-origin cross-validation (`cross_validate_by_time`) → persist the
-scoring `Pipeline` and the fitted model → score the held-out window from the
-*reloaded* model → evaluate against the naive-last and seasonal-naive
-baselines → visualize (residuals, model comparison, and a hand-rolled
-forecast-vs-actual plot).
+profile and the series plot, `ds.viz.plot_series`) → stateless datetime
+features scoped to what applies (`add_datetime_features(features=...)`, incl.
+the library's `elapsed_months` trend counter) → chronological split → fit the
+one-step transform plan (`ds.pipeline.fit_pipeline`: the month one-hot
+vocabulary) → rolling-origin cross-validation (`cross_validate_by_time`) →
+persist the scoring `Pipeline` and the fitted model → score the held-out
+window from the *reloaded* model → evaluate against the naive-last and
+seasonal-naive baselines → visualize (residuals, model comparison, and a
+forecast-vs-actual figure composed from two `plot_series` calls).
 
 This project exists to run the workspace's demand loop a third time. Friction
-it surfaced in the library is recorded as the new backlog in
-[`ROADMAP.md`](../../ROADMAP.md); nothing is promoted in the same change
-(demand first, one step per change).
+it surfaced in the library was recorded as the backlog in
+[`ROADMAP.md`](../../ROADMAP.md); nothing was promoted in the same change
+(demand first, one step per change). That backlog has since been served
+(P7): the pipeline now consumes the helpers its own friction demanded —
+`plot_series`, the `features=` selection, and `elapsed_months` — with
+equivalent held-out metrics.
 
 ## Modeling decisions worth knowing
 
@@ -50,14 +54,16 @@ it surfaced in the library is recorded as the new backlog in
   column and rejects duplicated months (corrupted input would otherwise
   silently interleave).
 - **Half the calendar features don't apply to a monthly series.**
-  `add_datetime_features` emits the full set; `date_day`/`date_hour` are
-  constant (left for `drop_constant_columns` — that composition worked) while
-  `date_dayofweek`/`date_is_weekend` are non-constant *noise* (the weekday of
-  the 1st of each month) and are dropped by hand — recorded as friction.
-- **Trend enters as `month_index`** (`year * 12 + month`, hand-rolled — no
-  library helper emits an elapsed-time feature), and the seasonal shape as
-  the one-hot month vocabulary; a numeric month would wrongly order December
-  next to nothing.
+  `date_day`/`date_hour` would be constant and `date_dayofweek`/
+  `date_is_weekend` non-constant *noise* (the weekday of the 1st of each
+  month). Originally the full set was emitted and hand-pruned — recorded as
+  friction (item 11) and since served: `add_datetime_features(features=...)`
+  scopes the emission so the noise columns never exist.
+- **Trend enters as `date_elapsed_months`** — the library's monotone counter
+  of whole months since a fixed epoch (friction item 12, replacing the
+  hand-rolled `month_index`; the two differ by a constant the intercept
+  absorbs) — and the seasonal shape as the one-hot month vocabulary; a
+  numeric month would wrongly order December next to nothing.
 - **The fit plan has exactly one step.** The series is complete (no
   imputation), its extremes are signal (no clipping), and OLS is scale-free
   (no scaling) — a *scope finding* about `fit_pipeline` on clean time-series

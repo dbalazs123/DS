@@ -16,10 +16,10 @@ working set of the most-reached-for helpers. Built out so far:
 | Validate | `ds.validation` | `require_columns`, `assert_no_nulls`, `assert_in_range`, `assert_in_set`, `assert_dtypes`, `check_schema` |
 | Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns`, `drop_duplicate_rows`, `coerce_dtypes`, `flag_outliers`, `clip_outliers`, `impute_missing` + split-safe pairs `fit_outlier_bounds`/`apply_flag_outliers`/`apply_clip_outliers`, `fit_impute_values`/`apply_impute_missing` |
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
-| Feature | `ds.features` | `add_datetime_features` (incl. `_hour`), `one_hot_encode`, `ordinal_encode`, `collapse_categories` (top-k + "other"), `scale_features`, `bin_column` + split-safe pairs `fit_one_hot_categories`/`apply_one_hot_encode`, `fit_ordinal_categories`/`apply_ordinal_encode`, `fit_topk_categories`/`apply_collapse_categories`, `fit_scale_params`/`apply_scale_features` |
+| Feature | `ds.features` | `add_datetime_features` (selectable `features=` subset; opt-in `_elapsed_months` trend counter), `one_hot_encode`, `ordinal_encode`, `collapse_categories` (top-k + "other"), `scale_features`, `bin_column` + split-safe pairs `fit_one_hot_categories`/`apply_one_hot_encode`, `fit_ordinal_categories`/`apply_ordinal_encode`, `fit_topk_categories`/`apply_collapse_categories`, `fit_scale_params`/`apply_scale_features` |
 | Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `train_test_split_random` (shuffled, optionally stratified), `fit_baseline` (mean / majority / naive-last / seasonal-naive), `save_model`/`load_model` (joblib persistence), `count_tokens` |
 | Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics`, `cross_validate_by_time` (rolling origin), `cross_validate_kfold` (optionally stratified; re-fits a transform pipeline per fold via `make_pipeline`), `compare_models` |
-| Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_confusion_matrix`, `plot_residuals`, `plot_model_comparison` |
+| Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_confusion_matrix`, `plot_residuals`, `plot_model_comparison`, `plot_series` (composable series/forecast plot) |
 
 Supporting: `ds.pipeline` (a persistable fit-once/apply-many `Pipeline` over
 the `fit_*`/`apply_*` pairs, fitted in one call from a `FitStep` plan via
@@ -42,9 +42,9 @@ extending recent momentum. Verdicts, and what they imply:
   library work") had never run, while eight consecutive PRs invested in
   supply-side library polish. **Consequence:** every library addition should
   now be pulled by a project need, not pushed from a candidate list. The
-  friction backlogs below are the queue (the `nyc_taxis` and `titanic` lists
-  are fully served; the open items are the `flights` backlog from the third
-  demand loop).
+  friction backlogs below are the queue (the `nyc_taxis`, `titanic` and
+  `flights` lists are all fully served; regenerating the queue takes a
+  fourth demand loop).
 - **Fit-once / score-later** — *stopped one step short of its own goal;
   since closed (P2).* Fitted parameters and the `Pipeline` persist as strict
   JSON, but at evaluation time the fitted **model** could not be persisted at
@@ -152,13 +152,38 @@ orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
   seasonality). Per the demand-first rule the project promotes nothing
   itself; its friction list is the new backlog below.
 
-**Next up:** the third demand loop (P6) regenerated the queue — the
-`flights` backlog below (items 10–13) is the plan, in observed-pain order;
-the strongest item is the missing time-series plot (10). Item 9's parked
-question — `cross_validate_by_time(make_pipeline=...)` — stays parked: the
-trigger did not fire on this project (see the backlog notes). Deprioritized
-until a project pulls them: more EDA helpers, more cookbook recipes, more
-CLI.
+- **P7 — serve the `flights` backlog: DONE.** Items 10–13 in observed-pain
+  order, each dogfooded by `projects/flights` in the same change (held-out
+  metrics equivalent throughout — the trend column is the hand-rolled
+  counter shifted by a constant the intercept absorbs):
+  - `ds.viz.plot_series` (item 10) — one composable series plot: a solid
+    observed line plus optional dashed, named prediction overlays, colours
+    drawn from the Axes' cycle so repeated calls on one `ax` compose. One
+    helper covers both of the project's hand-rolled figures — the raw
+    series *and* the history + forecast-vs-actual view — rather than two
+    single-purpose ones.
+  - `add_datetime_features(features=...)` (item 11) — an explicit selection
+    parameter, chosen over a resolution-aware default because inferring
+    resolution from the frame is fitted state in disguise (a later scoring
+    batch can be too small or too regular to infer from) and misfires
+    silently; an explicit list is stateless and self-documenting. Default
+    unchanged (the full calendar set).
+  - `"elapsed_months"` (item 12) — the trend counter lives *inside*
+    `add_datetime_features` as an opt-in selectable feature (same source
+    column, same expansion mechanism, and item 11's parameter already
+    provides opt-in) rather than as a second helper. Origin: a fixed
+    calendar epoch (whole months since January of year 0), so scoring later
+    rows is stateless; only differences matter for a trend term. Kept out
+    of the default set (a modeling device, near-collinear with `_year`); a
+    days/finer variant stays unbuilt until a project pulls it.
+  - Item 13 — **struck, not built** (see the backlog).
+
+**Next up:** the `flights` backlog is fully served and the queue is empty —
+per the demand-first rule the next step is a fourth demand loop (a new
+real-data project stressing an untouched surface), not more supply-side
+polish. Item 9's parked question — `cross_validate_by_time(make_pipeline=...)`
+— stays parked: the trigger has still not fired. Deprioritized until a
+project pulls them: more EDA helpers, more cookbook recipes, more CLI.
 
 ## Friction backlog (from `projects/nyc_taxis`)
 
@@ -253,26 +278,46 @@ The third run of the demand loop — the first to stress the time-series
 surface. Numbering continues from the `titanic` list; in observed-pain
 order:
 
-10. **No time-series plot in `ds.viz`.** The two most standard forecasting
-    visuals — the raw series over time and forecast-vs-actual over the
-    held-out window — both had to be hand-rolled with raw matplotlib
-    (`series.png`, `forecast.png`), twice in one pipeline; the stage has no
-    plot with a time axis at all. The strongest item: repeated pain within a
-    single project, and every future forecasting project would repeat it.
-11. **`add_datetime_features` is all-or-nothing.** On a monthly series half
-    its output does not apply: `_day`/`_hour` are constant (caught by
-    `drop_constant_columns` — that composition worked) but `_dayofweek`/
-    `_is_weekend` are non-constant *noise* (the weekday each month's 1st
-    lands on) that nothing catches, so the project hand-drops them. Whether
-    the fix is a feature-selection parameter or a resolution-aware default
-    should be decided when it's built, not here.
-12. **No elapsed-time/trend feature.** A linear forecaster needs a monotone
-    time index; the stage emits calendar *position* only, so
-    `month_index = year * 12 + month` is hand-rolled.
-13. **The time axis was assembled by hand** from a two-column `year` +
-    month-name split. Real but small (one `pd.to_datetime(..., format=)`
-    call plus a uniqueness check); recorded honestly — on its own it may not
-    clear the bar for a helper.
+10. ~~**No time-series plot in `ds.viz`.**~~ — **resolved in P7**:
+    `ds.viz.plot_series` — one solid observed line, optional dashed named
+    prediction overlays, colours from the Axes' cycle so calls compose on
+    one `ax`. One helper replaced both of the project's hand-rolled figures:
+    `series.png` is a single call, `forecast.png` two composed calls
+    (training tail, then the held-out window with the model and
+    seasonal-naive overlays). The API-shape question resolved to *one*
+    composable plot, not a separate forecast helper.
+11. ~~**`add_datetime_features` is all-or-nothing.**~~ — **resolved in P7**:
+    a `features=` selection parameter scopes the emission (default: the
+    full calendar set, unchanged). The deliberately-open shape question was
+    decided for explicit selection over a resolution-aware default:
+    inferring resolution from the frame is fitted state in disguise — a
+    later scoring batch can be too small or too regular to infer the same
+    answer from — and it misfires silently, while an explicit list is
+    stateless, self-documenting, and exactly matches the observed pain
+    (the project knew precisely which columns were noise). The project's
+    hand-drop of `date_dayofweek`/`date_is_weekend` is gone, and so is its
+    reliance on `drop_constant_columns` catching `_day`/`_hour` — the
+    scoped call never emits them.
+12. ~~**No elapsed-time/trend feature.**~~ — **resolved in P7**:
+    `"elapsed_months"`, an opt-in member of item 11's selection (same
+    source column and expansion mechanism, so no second helper) emitting
+    whole months since a *fixed* calendar epoch (January of year 0, i.e.
+    `year * 12 + month - 1`). The fixed epoch is the stateless-origin
+    answer: nothing is learned from the frame, so a later scoring run maps
+    the same timestamp to the same value, and for a trend term only
+    differences matter. Excluded from the default set (a modeling device,
+    near-collinear with `_year`). The project's hand-rolled `month_index`
+    is gone with equivalent held-out metrics (the counter differs by a
+    constant the intercept absorbs). A days/finer-grained variant stays
+    unbuilt until a project demands one.
+13. ~~**The time axis was assembled by hand.**~~ — **struck in P7, not
+    built**, as the backlog itself anticipated: the pain is one
+    `pd.to_datetime(..., format=)` call plus a project-specific uniqueness
+    check, observed once. A helper would wrap a single well-documented
+    pandas call behind a new name to learn without removing meaningful
+    code — below the helper bar. Won't build until a second project
+    repeats the pain (and shows which shape recurs: two-column splits,
+    format strings, or the uniqueness check).
 
 Notes from the same run, for the record:
 
