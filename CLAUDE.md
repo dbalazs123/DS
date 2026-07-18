@@ -81,21 +81,29 @@ more detail).
 
 ## Roadmap
 
-[`ROADMAP.md`](ROADMAP.md) carries the plan of record (P1–P13 all done; P12
-ran the sixth demand loop — `projects/air_quality`, the first project against
-real instrument-outage missingness on a gapped hourly axis — and **P13 served
-its backlog** (items 22–26): built `cross_validate_by_time(make_pipeline=...)`
-(item 22, item 9's parked question — the rolling-origin twin of the k-fold
-factory; the per-fold refit measurably moves the CV numbers here where titanic
-saw no change) and the `ds.validation` guards `assert_unique` / `assert_row_count`
-(items 24/25, two second-project triggers fired twice), and resolved items 23
-and 26 by documentation. The demand queue is now **empty** — the next step is a
-seventh demand loop: a new real-data project whose friction regenerates the
-backlog. The doc also carries a goal evaluation of the whole toolkit, the
-friction backlogs from the real-data projects, and the settled-decision
-rationales this file's notes point to. Read it before starting new library
-work — and note its ordering rule: new library work should trace to a friction
-item from a real project, not a brainstormed candidate list.
+[`ROADMAP.md`](ROADMAP.md) carries the plan of record (P1–P15 all done, and
+**Release 0.2.0 shipped**). P14 ran the *seventh* demand loop —
+`projects/adult_income`, the first heavily-categorical / high-cardinality
+project — and **P15 served its backlog** (items 27–29): built
+`ds.io.fetch_dataset` (item 27, the checksum-verified multi-mirror fetch both
+`air_quality` and `adult_income` had hand-rolled) and resolved items 28 (the
+string `"?"` sentinel — a documented one-liner) and 29 (the categorical↔target
+EDA view — parked, no code workaround to promote) without a build. The current
+position is post-P15: the demand queue is empty, so the plan of record's next
+direction is an **eighth demand loop that also widens the parked capabilities** —
+a second forecasting project and a second NLP/text project chosen to stress the
+forecasting and text surfaces hard enough that friction pulls real forecasting/
+backtest and vectorization/text-feature helpers into the library. Forecasting
+and NLP/text are **committed, in-scope** use cases — the `nlp` extra,
+`count_tokens`, and `ds.modeling.timeseries` / `baseline` /
+`add_datetime_features` stay and are grown via demand loops, not trimmed. The
+current near-term library gaps are `eda` depth (the categorical↔target
+association view, item 29) and forecasting/text depth. The doc also carries a
+goal evaluation of the whole toolkit, the friction backlogs from the real-data
+projects, and the settled-decision rationales this file's notes point to. Read
+it before starting new library work — and note its ordering rule: new library
+work should trace to a friction item from a real project, not a brainstormed
+candidate list.
 
 ## Engineering notes (hard-won gotchas)
 

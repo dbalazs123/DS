@@ -33,10 +33,28 @@ binary spam classification), `air_quality` (sensor gap-filling regression
 on an hourly time axis) and `adult_income` (heavily-categorical binary income
 classification).
 
-## Goal evaluation (2026-07)
+## Goal evaluation (2026-07, refreshed post-P15)
 
 A deliberate stop to work backward from the project's stated goals instead of
-extending recent momentum. Verdicts, and what they imply:
+extending recent momentum. The per-goal verdicts below were written at the
+original 2026-07 stop; the **post-P15 refresh** that supersedes them:
+
+- **The hybrid workspace / promotion-loop goal — the most under-served at the
+  original stop — is now well-served.** The demand loop has run seven times
+  (`nyc_taxis`, `titanic`, `flights`, `diamonds`, `sms_spam`, `air_quality`,
+  `adult_income`), every backlog has been dispatched, and *every* library
+  addition since P1 traces to real-project friction. Release 0.2.0 shipped. The
+  promotion loop is the settled way this repo grows.
+- **The live gaps are now `eda` depth and forecasting/text depth.** `eda` is the
+  one still-thin general-purpose stage (three read-only helpers, no
+  categorical↔target view — item 29), and while forecasting (`flights`) and
+  text (`sms_spam`) each have one project, both delegated their modeling heart
+  to raw sklearn, so the forecasting/backtest and vectorization/text-feature
+  surfaces are still shallow. The next direction (the "Next up" entry) targets
+  exactly these: close the `eda` gap, then run a second forecasting and a second
+  text project chosen to *pull* that depth.
+
+The original verdicts, and what they implied at the time:
 
 - **Hybrid workspace (library + `projects/` that consume it)** — *was the
   most under-served goal.* Until `nyc_taxis`, `projects/` held only the
@@ -67,15 +85,25 @@ extending recent momentum. Verdicts, and what they imply:
   most of the `nlp` extra was unused, and `polars` sat unused in the core
   dependencies. Extras now carry only dependencies code actually consumes
   (the rule is recorded in `pyproject.toml` and CLAUDE.md). In-scope reality
-  today: tabular regression/classification on pandas — widen it by building,
-  not by declaring.
+  today is **committed and growing**: tabular regression/classification on
+  pandas is the deepest surface, and forecasting and NLP/text are equally
+  in-scope commitments being widened by demand loops (the `flights` forecasting
+  project and the `sms_spam` text project each pulled real surface —
+  `plot_series`, `train_test_split_by_time`, `count_tokens`, the naive-baseline
+  strategies). The direction is to widen all three by *building* against real
+  projects, not to trim the claims to tabular-only — the modeling docstrings
+  that name forecasting and text stay as directional commitments.
 - **Engineering discipline** — *well-served* (strict typing, mirrored tests,
   coverage gate, honest docs). No change; point it at the gaps above.
 
 Completed work that mattered less against the goals (kept, but the lesson is
 recorded): `ds run` and the cross-stage cookbook recipes are good polish that
-consumed cycles while the demand side stayed empty; `count_tokens` is an
-orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
+consumed cycles while the demand side stayed empty. `count_tokens` began as an
+NLP toe-dip and is now a **kept, half-earned** helper: `sms_spam` (P10) made it
+a real — if descriptive-only — consumer, and it stays as an in-scope
+commitment. The way it fully earns its keep is a *second* text project whose
+modeling path genuinely needs it (see the "Next up" direction), not removal.
+The lesson is the ordering rule above: demand first.
 
 ## Plan of record
 
