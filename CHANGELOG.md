@@ -103,6 +103,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `marital_status` and `occupation`) to prove it earns its place; its end-to-end
   test passes unchanged.
 
+### Changed
+- Bumped pre-commit hook pins so they stop drifting from the dev environment:
+  `ruff-pre-commit` v0.6.9 → v0.15.21 (now matching the `ruff` version
+  `uv.lock` resolves, with the `dev` group's `ruff>=` floor raised to the same
+  version so a future `uv lock --upgrade` can't reopen the gap),
+  `pre-commit-hooks` v4.6.0 → v6.0.0, and `nbstripout` 0.7.1 → 0.9.1. Absorbed
+  the resulting reformat (`tests/test_public_api.py`); no new lint rule needed
+  a fix or an ignore.
+
 ## [0.2.0] - 2026-07-18
 
 ### Added
