@@ -123,10 +123,14 @@ Things that cost a round-trip to discover; save yourself the CI failure:
   function signature ruff wants collapsed will fail the lint job.
 - **`git add` new files *before* running `pre-commit run --all-files`.**
   pre-commit only sees git-tracked files, so a pre-flight run over freshly
-  created (still-untracked) files silently checks nothing. Also note the
-  pinned pre-commit ruff (`.pre-commit-config.yaml` rev) trails the dev-env
-  ruff, so a rule retired in the newer version (e.g. UP027) can still fail CI
-  even when `make lint`/`make format` are clean.
+  created (still-untracked) files silently checks nothing.
+- **Keep the pre-commit ruff pin aligned with the dev-env ruff.** The
+  `ruff-pre-commit` rev in `.pre-commit-config.yaml` is pinned to match the
+  `ruff` version `uv.lock` resolves (and `dev` group's `ruff>=...` floor is set
+  to the same version), so CI's pinned lint job and local `make
+  format`/`make lint` can't silently disagree again. When `uv lock --upgrade`
+  moves `ruff`, bump the `ruff-pre-commit` rev (and the `ruff>=` floor) in the
+  same change.
 - **`mypy --strict` + pandas-stubs quirks:** `DataFrame.corr(method=...)` wants a
   `Literal["pearson","kendall","spearman"]`, not `str`; and `df.loc[a, b]`
   returns a broad scalar union that `float()` rejects — index positionally via

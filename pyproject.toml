@@ -55,7 +55,7 @@ Repository = "https://github.com/BudSpencR/DS"
 # default for contributors but it is never shipped to consumers of the library.
 [dependency-groups]
 dev = [
-    "ruff>=0.6",
+    "ruff>=0.15.21",
     "mypy>=1.11",
     "pytest>=8.3",
     "pytest-cov>=5.0",
