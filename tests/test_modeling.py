@@ -261,6 +261,54 @@ def test_cross_validate_by_time_rejects_bad_inputs() -> None:
         )
 
 
+def test_cross_validate_by_time_refits_pipeline_per_fold() -> None:
+    # x carries a NaN, so the model rejects the frame unless each fold's
+    # imputation runs; the expanding rolling-origin window makes each fold's
+    # median differ, so re-fitting (not one whole-frame fit) is observable in
+    # the fitted parameters. t stays sorted so the folds are contiguous blocks.
+    df = pd.DataFrame(
+        {
+            "t": list(range(12)),
+            "x": [None, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0],
+            "y": [float(2 * v) for v in range(12)],
+        }
+    )
+    plan = [FitStep("impute_missing", lambda d: fit_impute_values(d, ["x"], strategy="median"))]
+    seen: list[pd.DataFrame] = []
+    fitted: list[Pipeline] = []
+
+    def make_pipeline(frame: pd.DataFrame) -> Pipeline:
+        seen.append(frame)
+        pipeline = fit_pipeline(frame, plan)
+        fitted.append(pipeline)
+        return pipeline
+
+    result = cross_validate_by_time(
+        df,
+        time_column="t",
+        target="y",
+        make_model=lambda: LinearRegression(),
+        make_pipeline=make_pipeline,
+        n_splits=3,
+    )
+    assert len(result) == 3
+    assert result["mae"].notna().all()
+
+    # One fresh fit per fold, on that fold's expanding training window only
+    # (time and target columns ride along, as at final-training time).
+    assert [len(frame) for frame in seen] == [3, 6, 9]
+    assert all({"t", "y"} <= set(frame.columns) for frame in seen)
+
+    # The fitted median is the fold's own past, never the whole frame's.
+    fold_fills: list[float] = []
+    for pipeline in fitted:
+        params = pipeline.steps[0].params
+        assert isinstance(params, ImputeValues)
+        fold_fills.append(float(params.fill_values["x"]))
+    assert fold_fills == [1.5, 3.0, 4.5]
+    assert float(df["x"].median()) not in fold_fills
+
+
 def test_cross_validate_kfold_scores_every_fold() -> None:
     df = _linear_frame().drop(columns=["t"])
     result = cross_validate_kfold(df, target="y", make_model=lambda: LinearRegression(), n_splits=4)

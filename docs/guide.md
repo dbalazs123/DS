@@ -86,6 +86,26 @@ df = load_raw("sales.csv")            # reads <data_dir>/raw/sales.csv
 save_processed(df, "sales.parquet")   # writes <data_dir>/processed/sales.parquet
 ```
 
+**Sentinel-coded missingness — decode it before you validate or explore.** Some
+files spell a gap as a legal-looking number (`-200`, `-999`, `9999`). Left in
+place it is invisible: `missing_value_report` counts zero missing,
+`assert_in_range` is unsatisfiable, and `summarize` averages the sentinel into
+every statistic. The read-time `na_values=` idiom looks like the fix, but it
+matches on the field's *raw text* — so on a decimal-comma file
+`na_values=["-200"]` silently misses the cells written `-200,0`, leaving a
+fraction of the gaps undecoded. The robust move is a post-parse numeric
+replace, *after* the decimal conversion and *before* any validation or EDA sees
+the frame (the ordering is load-bearing — every downstream guard assumes gaps
+are already `NaN`):
+
+```python
+import numpy as np
+
+df = load_raw("air.csv", sep=";", decimal=",")     # 2,6 → 2.6 first
+df[measurements] = df[measurements].replace(-200.0, np.nan)  # then decode gaps
+# only now are missing_value_report / assert_in_range / summarize honest
+```
+
 ### Validate — `ds.validation`
 
 Fail fast on the assumptions a pipeline depends on.
@@ -96,16 +116,26 @@ from ds.validation import (
     assert_in_range,
     assert_in_set,
     assert_no_nulls,
+    assert_row_count,
+    assert_unique,
     check_schema,
     require_columns,
 )
 
 require_columns(df, ["date", "amount"])        # raises if a column is missing
+assert_row_count(df, 9357)                     # raises if the row count is off
 assert_no_nulls(df, ["amount"])                # raises on nulls in `amount`
 assert_in_range(df, "amount", min_value=0)     # raises on negative amounts
 assert_in_set(df, "status", ["open", "closed"])  # raises on unknown values
 assert_dtypes(df, {"amount": "float64"})       # raises on the wrong dtype
+assert_unique(df, "date")                      # raises on a duplicated key
 ```
+
+`assert_row_count` is the boundary guard for the silent-parse class of failure
+(a malformed read that yields a healthy-looking frame of the wrong length);
+`assert_unique` is the guard raw `pd.to_datetime` doesn't do — a duplicated
+timestamp on a time axis is corrupted input a later `sort_values` would
+silently interleave.
 
 For a whole-frame declarative check, `check_schema` leans on `pandera` and can
 coerce dtypes as it validates:
@@ -492,11 +522,12 @@ cross_validate_kfold(..., metrics_fn=macro_metrics, stratify=True)
 Watch what frame you hand it: if the features already carry fit-based
 transforms fitted on the whole training split, every fold's test rows have
 influenced the statistics (imputation fills, scale parameters, …) its
-training rows were transformed with. `cross_validate_kfold` closes that leak
-with `make_pipeline` — pass the raw frame plus the same fit plan the training
-run uses (see [Fit the whole plan in one
+training rows were transformed with. Both functions close that leak with the
+same `make_pipeline` factory — pass the raw frame plus the same fit plan the
+training run uses (see [Fit the whole plan in one
 call](#fit-the-whole-plan-in-one-call)), and the transform chain is re-fitted
-on each fold's training rows only:
+per fold on its training rows only (`cross_validate_by_time` on each expanding
+rolling-origin window, so every fold's statistics come from its own past):
 
 ```python
 from ds.pipeline import fit_pipeline
@@ -509,7 +540,21 @@ cross_validate_kfold(
     stratify=True,
     metrics_fn=classification_metrics,
 )
+
+cross_validate_by_time(            # rolling-origin twin, re-fit per window
+    raw_train,
+    time_column="timestamp",
+    target="co_gt",
+    make_model=lambda: Ridge(alpha=1.0),
+    make_pipeline=lambda frame: fit_pipeline(frame, plan),
+)
 ```
+
+Re-fitting matters most when the fitted state genuinely varies fold to fold —
+`projects/air_quality`'s impute medians drift ~28% across its rolling-origin
+windows, so the leak-free protocol measurably moves the CV numbers there
+(where a single-vocabulary plan re-fits to the same values every fold and the
+factory is a no-op).
 
 Finally, score candidates side by side — including the baseline — with
 `compare_models`, whose frame feeds `ds.viz.plot_model_comparison`:

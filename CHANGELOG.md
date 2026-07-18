@@ -7,6 +7,36 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- The `air_quality` friction backlog served (P13 — `ROADMAP.md` items 22–26 in
+  observed-pain order; three served, two resolved by documentation), each
+  dogfooded by `projects/air_quality` (and `projects/flights` for the shared
+  guard) in the same change, held-out metrics and persisted artifacts verified
+  equivalent:
+  - `cross_validate_by_time(make_pipeline=...)` (item 22, the headline —
+    item 9's parked question): the rolling-origin twin of
+    `cross_validate_kfold`'s factory, re-fitting the same `FitStep` plan per
+    fold on each fold's expanding training window only. `air_quality` deleted
+    its hand-rolled `_fold_fit_state` boundary reproduction (the dogfood
+    proof). Unlike item 9's titanic finding, the effect is real on this data —
+    the per-fold impute medians swing ~28%, so the leak-free protocol
+    measurably moves the CV numbers (mean 0.406 → 0.409) while held-out metrics
+    and every other persisted artifact stay byte-identical.
+  - `ds.validation.assert_row_count(df, expected)` (item 25, item 20's
+    second-project trigger) and `ds.validation.assert_unique(df, column)`
+    (item 24, item 13's second-project trigger): two fluent guards. Each adds
+    the stage-consistent `DataValidationError`; `assert_unique` also adds a
+    correctness check raw `pd.to_datetime` doesn't do (a duplicated key a later
+    sort would silently interleave). `flights` and `air_quality` both call
+    `assert_unique` after their time-axis parse; `air_quality`'s `trim_raw`
+    closes with `assert_row_count`.
+- `fit_baseline`'s `"naive_last"`/`"seasonal_naive"` docstring now documents
+  that the naive strategies align *positionally* and so assume a gapless axis;
+  on a gapped axis, align by timestamp instead (item 23, resolved by
+  documentation).
+- Guide Acquire-section gotcha on sentinel-coded missingness: decode it with a
+  post-parse numeric replace *before* validation/EDA, not a read-time
+  `na_values=` that silently misses decimal-comma spellings (item 26, resolved
+  by documentation).
 - `projects/air_quality`: sixth **real-data** project (P12 — the sixth run of
   the demand loop, and the first against real instrument-outage missingness
   on a gapped hourly axis). Reconstructs the reference CO analyzer's reading

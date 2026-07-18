@@ -64,7 +64,14 @@ from ds.modeling.tabular import split_features_target
 from ds.modeling.timeseries import train_test_split_by_time
 from ds.pipeline import FitStep, fit_pipeline
 from ds.preprocessing import fit_impute_values, standardize_column_names
-from ds.validation import assert_dtypes, assert_in_range, assert_no_nulls, require_columns
+from ds.validation import (
+    assert_dtypes,
+    assert_in_range,
+    assert_no_nulls,
+    assert_row_count,
+    assert_unique,
+    require_columns,
+)
 from ds.viz import (
     plot_missingness,
     plot_model_comparison,
@@ -184,10 +191,11 @@ def trim_raw(df: pd.DataFrame, expected_rows: int = EXPECTED_ROWS) -> pd.DataFra
 
     The original file ends every line with two empty fields (read as
     ``Unnamed:`` columns) and carries 114 all-empty trailing rows. Both are
-    dropped, and the surviving row count is checked against the published
-    size — the second time in this workspace a boundary file has needed an
-    expected-shape check to make a silently-wrong parse loud (the trap here:
-    a plausible-looking frame that is 114 rows of NaN too long).
+    dropped, and the surviving row count is checked against the published size
+    with ``assert_row_count`` — the second time in this workspace a boundary
+    file has needed an expected-shape check to make a silently-wrong parse
+    loud (the trap here: a plausible-looking frame that is 114 rows of NaN too
+    long), which earned that guard its place (ROADMAP item 25).
 
     Args:
         df: The frame as read from the raw file with the correct separator.
@@ -197,16 +205,12 @@ def trim_raw(df: pd.DataFrame, expected_rows: int = EXPECTED_ROWS) -> pd.DataFra
         A new frame without the junk columns and empty rows.
 
     Raises:
-        ValueError: If the trimmed frame does not have ``expected_rows`` rows.
+        DataValidationError: If the trimmed frame does not have
+            ``expected_rows`` rows.
     """
     out = df.drop(columns=[c for c in df.columns if c.startswith("Unnamed")])
     out = out.dropna(how="all").reset_index(drop=True)
-    if len(out) != expected_rows:
-        raise ValueError(
-            f"expected {expected_rows} data rows after trimming, got {len(out)} — "
-            "the raw file did not parse the way this pipeline assumes"
-        )
-    return out
+    return assert_row_count(out, expected_rows)
 
 
 def mask_sentinels(df: pd.DataFrame) -> pd.DataFrame:
@@ -236,8 +240,9 @@ def build_time_axis(df: pd.DataFrame) -> pd.DataFrame:
     first) and ``18.00.00`` (dot-separated) — and everything temporal
     downstream needs one sortable datetime column. The assembled axis must be
     unique: a duplicated hour would mean corrupted input, and sorting would
-    silently interleave the duplicates. (The second project to hand-assemble
-    its time axis; recorded against ROADMAP item 13's trigger.)
+    silently interleave the duplicates — the guard raw ``to_datetime`` does
+    not do, now ``assert_unique`` (ROADMAP item 24, the second project to
+    hand-assemble a time axis; the concatenation and format stay project-local).
 
     Args:
         df: Frame with ``date`` and ``time`` string columns.
@@ -247,13 +252,11 @@ def build_time_axis(df: pd.DataFrame) -> pd.DataFrame:
         sorted chronologically.
 
     Raises:
-        ValueError: If any timestamp occurs more than once.
+        DataValidationError: If any timestamp occurs more than once.
     """
     out = df.copy()
     out["timestamp"] = pd.to_datetime(out["date"] + " " + out["time"], format="%d/%m/%Y %H.%M.%S")
-    if not out["timestamp"].is_unique:
-        duplicated = out.loc[out["timestamp"].duplicated(), "timestamp"]
-        raise ValueError(f"duplicated hours in the time axis: {duplicated.tolist()}")
+    assert_unique(out, "timestamp")
     out = out.drop(columns=["date", "time"])
     return out.sort_values("timestamp").reset_index(drop=True)
 
@@ -305,48 +308,6 @@ def same_hour_yesterday_reference(
     by_time = frame.set_index("timestamp")[_TARGET]
     lagged = timestamps - pd.Timedelta(hours=HOURS_PER_DAY)
     return [float(by_time.get(when, fallback)) for when in lagged]
-
-
-def _fold_fit_state(train: pd.DataFrame, n_splits: int) -> pd.DataFrame:
-    """Measure how the plan's fitted state would differ if re-fitted per fold.
-
-    Reproduces the contiguous expanding training windows that
-    :func:`ds.evaluation.cross_validate_by_time` uses (``n_splits + 1``
-    near-equal blocks; fold ``i`` trains on the first ``i``) and fits the
-    plan's statistics on each window alone: the impute medians of the two
-    gapped reference channels and the centre/spread of one sensor channel.
-    The rolling-origin CV in this pipeline transforms the frame *once* with
-    the training-run pipeline — the library offers no per-fold re-fitting on
-    the time path — so this table is the measurement of what that shortcut
-    ignores. (Recorded against ROADMAP item 9's parked question.)
-
-    Args:
-        train: The raw (pre-transform) training frame, time-sorted.
-        n_splits: Fold count, matching the CV call.
-
-    Returns:
-        One row per fold: training-window size and the would-be fitted
-        statistics.
-    """
-    base, remainder = divmod(len(train), n_splits + 1)
-    boundaries = [0]
-    for block in range(n_splits + 1):
-        boundaries.append(boundaries[-1] + base + (1 if block < remainder else 0))
-    rows = []
-    for fold in range(1, n_splits + 1):
-        window = train.iloc[: boundaries[fold]]
-        fills = fit_impute_values(window, ["nox_gt", "no2_gt"], strategy="median").fill_values
-        scale = fit_scale_params(window, ["pt08_s1_co"])
-        rows.append(
-            {
-                "train_size": len(window),
-                "nox_gt_median": float(fills["nox_gt"]),
-                "no2_gt_median": float(fills["no2_gt"]),
-                "pt08_s1_co_center": float(scale.center["pt08_s1_co"]),
-                "pt08_s1_co_spread": float(scale.spread["pt08_s1_co"]),
-            }
-        )
-    return pd.DataFrame(rows, index=pd.RangeIndex(1, n_splits + 1, name="fold"))
 
 
 def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
@@ -456,17 +417,22 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     ]
     scoring = fit_pipeline(train, plan)
 
-    # 10. Cross-validate on the training window with rolling-origin folds.
-    # The frame is transformed once up front: cross_validate_by_time has no
-    # make_pipeline, so per-fold statistics cannot be re-fitted on the time
-    # path — and unlike the earlier projects' one-vocabulary plans, here the
-    # fitted state genuinely varies fold to fold. The companion table
-    # measures exactly what that shortcut ignores.
+    # 10. Cross-validate on the training window with rolling-origin folds,
+    # re-fitting the transform plan inside each fold. Unlike the earlier
+    # projects' single-vocabulary plans, this pipeline's fitted state
+    # genuinely varies fold to fold — the impute medians and scale centres are
+    # learned from seasons of differing missingness and level (nox_gt's median
+    # swings ~28% across the folds) — so make_pipeline (ROADMAP item 22) is
+    # what keeps each fold's statistics on its own past. The raw training
+    # frame goes in; each fold fits its own pipeline from the same plan the
+    # scoring run uses. This dissolved the hand-rolled fold-boundary
+    # reproduction the earlier version needed to measure that drift out-of-band.
     cv_scores = cross_validate_by_time(
-        scoring.apply(train),
+        train,
         time_column="timestamp",
         target=_TARGET,
         make_model=lambda: Ridge(alpha=1.0),
+        make_pipeline=lambda frame: fit_pipeline(frame, plan),
     )
     cv_scores.to_csv(output_dir / "cv_folds.csv")
     logger.info(
@@ -474,7 +440,6 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
         float(cv_scores["mae"].mean()),
         float(cv_scores["mae"].std()),
     )
-    _fold_fit_state(train, n_splits=5).to_csv(output_dir / "cv_fold_fit_state.csv")
 
     # 11. Apply the fitted plan to both windows and persist everything a
     # later scoring run needs: the processed frame, the strict-JSON scoring

@@ -52,6 +52,8 @@ from ds.validation import (
     assert_in_range,
     assert_in_set,
     assert_no_nulls,
+    assert_row_count,
+    assert_unique,
     check_schema,
     require_columns,
 )
@@ -70,6 +72,25 @@ def test_assert_no_nulls_detects_nulls() -> None:
     df = pd.DataFrame({"a": [1, None]})
     with pytest.raises(DataValidationError):
         assert_no_nulls(df)
+
+
+def test_assert_row_count_ok_and_mismatch() -> None:
+    df = pd.DataFrame({"a": [1, 2, 3]})
+    assert assert_row_count(df, 3) is df
+    with pytest.raises(DataValidationError, match="Expected 4 rows, got 3"):
+        assert_row_count(df, 4)
+
+
+def test_assert_unique_ok_and_duplicates() -> None:
+    df = pd.DataFrame({"ts": [1, 2, 3]})
+    assert assert_unique(df, "ts") is df
+    with pytest.raises(DataValidationError, match="Duplicated values in 'ts'"):
+        assert_unique(pd.DataFrame({"ts": [1, 2, 2]}), "ts")
+
+
+def test_assert_unique_missing_column_raises() -> None:
+    with pytest.raises(KeyError):
+        assert_unique(pd.DataFrame({"a": [1]}), "nope")
 
 
 def test_assert_in_range_ok_ignores_nulls() -> None:

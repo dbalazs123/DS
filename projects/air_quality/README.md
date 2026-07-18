@@ -31,9 +31,11 @@ consumer, and weighting the choice toward the open watch-list in `ROADMAP.md`:
 - **A rolling-origin CV whose per-fold state genuinely varies.** `ROADMAP.md`
   item 9's parked question — `cross_validate_by_time(make_pipeline=...)` —
   had been waiting for a consumer whose per-fold fitted state actually
-  changes. This is it: the impute medians and scale parameters drift with
-  the seasons (persisted in `cv_fold_fit_state.csv`). The trigger fired; the
-  friction is recorded as item 22.
+  changes. This project is it: the impute medians and scale parameters drift
+  with the seasons (`nox_gt`'s impute median swings ~28% across the folds),
+  where the earlier projects' single-vocabulary plans re-fit to the same
+  values every fold. That pulled the parameter into being — served as item
+  22 — and the CV now re-fits the transform plan on each fold's own window.
 - **A silently-wrong boundary parse and a hand-assembled time axis.** The
   file carries two empty trailing columns and 114 all-empty trailing rows
   (a plausible read keeps them), caught by a row-count check against the
@@ -50,8 +52,8 @@ partial remainder) → hand-assemble the hourly time axis → calendar features
 (`train_test_split_by_time`) → fit the three-step transform plan
 (`ds.pipeline.fit_pipeline`: median impute / 24-level hour one-hot /
 standardize) on the training window → rolling-origin cross-validation
-(`cross_validate_by_time`) with a companion table measuring the per-fold
-fitted state the single up-front transform cannot re-fit → persist the scoring
+(`cross_validate_by_time`, re-fitting that plan on each fold's own window via
+`make_pipeline`) → persist the scoring
 `Pipeline` and the fitted model → score the held-out window from the
 *reloaded* model → evaluate against two references → visualize.
 

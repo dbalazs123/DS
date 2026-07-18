@@ -84,6 +84,19 @@ def fit_baseline(
           for seasonal data (e.g. ``season_length=7`` for daily data with a
           weekly cycle).
 
+    The two naive strategies align **positionally**: ``predict(n)`` returns the
+    next ``n`` values by position (the last training value repeated, or the
+    last season cycled), which is the true same-time-ago reference only when
+    the scored window is a *gapless* continuation of the training axis — the
+    next row is the next period. On a gapped axis (rows dropped for
+    missingness, or an irregular sampling), position ``i - season_length`` is
+    no longer the same season back, so a positional seasonal baseline would be
+    scored on a misalignment; align by timestamp instead — index the labeled
+    target by its time column, shift the wanted timestamps back one period,
+    and read the value there (falling back to the mean where that period is
+    itself missing). ``ds.modeling.timeseries.train_test_split_by_time``
+    produces the gapless case these strategies assume.
+
     Args:
         y: The training target, in chronological order for the naive
             strategies. Missing values are ignored for ``"mean"`` and

@@ -13,12 +13,12 @@ working set of the most-reached-for helpers. Built out so far:
 | Stage | Module | Status |
 |-------|--------|--------|
 | Acquire | `ds.io` | `load_table`, `save_table` (csv/tsv/parquet/json/jsonl), `load_raw`, `save_processed`, `save_params`/`load_params` (fitted-parameter JSON) |
-| Validate | `ds.validation` | `require_columns`, `assert_no_nulls`, `assert_in_range`, `assert_in_set`, `assert_dtypes`, `check_schema` |
+| Validate | `ds.validation` | `require_columns`, `assert_row_count`, `assert_no_nulls`, `assert_in_range`, `assert_in_set`, `assert_unique`, `assert_dtypes`, `check_schema` |
 | Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns`, `drop_duplicate_rows`, `coerce_dtypes`, `flag_outliers`, `clip_outliers`, `impute_missing` + split-safe pairs `fit_outlier_bounds`/`apply_flag_outliers`/`apply_clip_outliers`, `fit_impute_values`/`apply_impute_missing` |
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
 | Feature | `ds.features` | `add_datetime_features` (selectable `features=` subset; opt-in `_elapsed_months` trend counter), `one_hot_encode`, `ordinal_encode`, `collapse_categories` (top-k + "other"), `scale_features`, `bin_column` + split-safe pairs `fit_one_hot_categories`/`apply_one_hot_encode`, `fit_ordinal_categories`/`apply_ordinal_encode`, `fit_topk_categories`/`apply_collapse_categories`, `fit_scale_params`/`apply_scale_features` |
 | Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `train_test_split_random` (shuffled, optionally stratified), `fit_baseline` (mean / majority / naive-last / seasonal-naive), `save_model`/`load_model` (joblib persistence), `count_tokens` |
-| Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics`, `cross_validate_by_time` (rolling origin), `cross_validate_kfold` (optionally stratified; re-fits a transform pipeline per fold via `make_pipeline`), `compare_models` |
+| Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics`, `cross_validate_by_time` (rolling origin; optionally re-fits a transform pipeline per fold via `make_pipeline`), `cross_validate_kfold` (optionally stratified; same `make_pipeline` re-fit), `compare_models` |
 | Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_confusion_matrix`, `plot_residuals`, `plot_model_comparison`, `plot_series` (composable series/forecast plot) |
 
 Supporting: `ds.pipeline` (a persistable fit-once/apply-many `Pipeline` over
@@ -44,10 +44,10 @@ extending recent momentum. Verdicts, and what they imply:
   library work") had never run, while eight consecutive PRs invested in
   supply-side library polish. **Consequence:** every library addition should
   now be pulled by a project need, not pushed from a candidate list. The
-  friction backlogs below are the queue (the first five lists — `nyc_taxis`,
-  `titanic`, `flights`, `diamonds` and `sms_spam` — are fully dispatched;
-  P12 ran the sixth demand loop, and the `air_quality` list is the open
-  queue).
+  friction backlogs below are the queue (the first six lists — `nyc_taxis`,
+  `titanic`, `flights`, `diamonds`, `sms_spam` and `air_quality` — are fully
+  dispatched; P12 ran the sixth demand loop and P13 served its backlog, so the
+  demand queue is empty pending a seventh loop).
 - **Fit-once / score-later** — *stopped one step short of its own goal;
   since closed (P2).* Fitted parameters and the `Pipeline` persist as strict
   JSON, but at evaluation time the fitted **model** could not be persisted at
@@ -319,11 +319,38 @@ orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
   (MAE 1.068, r² −0.030). Per the demand-first rule the project promotes
   nothing itself; its friction list is the new backlog below.
 
-**Next up:** serve the `air_quality` backlog — items 22–26 below, in
-observed-pain order. Item 22 (`cross_validate_by_time(make_pipeline=...)`)
-is the headline: item 9's parked question finally has the consumer it was
-waiting for. Deprioritized until a project pulls them: more EDA helpers,
-more cookbook recipes, more CLI.
+- **P13 — serve the `air_quality` backlog: DONE.** Items 22–26 in
+  observed-pain order — three served, two resolved by documentation (each
+  rationale inline in the backlog below), all dogfooded by `projects/air_quality`
+  (and, for the shared guard, `projects/flights`) in the same change:
+  - `cross_validate_by_time(make_pipeline=...)` (item 22, the headline —
+    item 9's parked question) — the rolling-origin twin of
+    `cross_validate_kfold`'s factory: the same `FitStep`-plan re-fitted per
+    fold on each fold's expanding window only. air_quality deleted its
+    hand-rolled `_fold_fit_state` boundary reproduction (the dogfood proof).
+    Unlike item 9's titanic finding, the effect is **real on this data**: the
+    per-fold impute medians swing ~28%, so the leak-free protocol measurably
+    moves the CV numbers (mean 0.406 → 0.409) while held-out metrics and every
+    persisted artifact stay byte-identical.
+  - `assert_unique` (item 24, item 13's second-project trigger) and
+    `assert_row_count` (item 25, item 20's second-project trigger) — two
+    fluent guards in `ds.validation`. Both triggers had fired twice with an
+    agreed shape; each adds the stage-consistent `DataValidationError` (and,
+    for `assert_unique`, a correctness check raw `to_datetime` doesn't do).
+    Item 24 resolved to the validation-guard shape over the recorded
+    parse-wrapper — the reasoning is inline in the backlog.
+  - Items 23 (`fit_baseline`'s positional/gapped-axis mismatch) and 26
+    (sentinel-coded missingness invisibility) — **resolved by documentation**,
+    each one consumer: item 23 in `fit_baseline`'s docstring (the completeness
+    assumption the flights note quietly made), item 26 as a Guide Acquire-
+    section gotcha (the `na_values=` decimal-comma trap and the load-bearing
+    ordering).
+
+**Next up:** the `air_quality` backlog is served (P13), so the demand queue is
+empty again — the next step is a **seventh demand loop**: a new real-data
+project, chosen by the established rule (grep which library surfaces still have
+no real consumer), whose friction regenerates the backlog. Deprioritized until
+a project pulls them: more EDA helpers, more cookbook recipes, more CLI.
 
 ## Friction backlog (from `projects/nyc_taxis`)
 
@@ -692,92 +719,84 @@ The sixth run of the demand loop — the first against instrument-outage
 missingness and a gapped hourly axis. Numbering continues from the
 `sms_spam` list; in observed-pain order:
 
-22. **`cross_validate_by_time` cannot re-fit the transform chain per fold —
-    item 9's parked trigger finally fired.** The recorded condition was "a
-    rolling-origin consumer whose per-fold fitted state genuinely varies",
-    and this is it: the plan's impute medians and scale parameters are
-    learned from windows whose missingness and levels drift with the
-    seasons, and the per-fold measurement (persisted as
-    `cv_fold_fit_state.csv`) shows the would-be state moving fold to fold —
-    the `nox_gt` impute median spans 115–147 (a 28% swing), the
-    `pt08_s1_co` scale centre 1097–1203. The project does what titanic did
-    before item 9: transforms the training frame *once* with the
-    training-run pipeline and cross-validates that, a leak in protocol
-    recorded rather than hidden. Candidate shape, and the recorded
-    strongest: the `make_pipeline` factory parameter
-    `cross_validate_kfold` already has — the same `FitStep`-plan mechanism,
-    re-fitted per fold on the fold's training window only. Sub-observation
-    for whoever serves it: measuring the per-fold state meant *reproducing
-    the fold boundaries by hand* (the `divmod` block-cutting copied from
-    the library source), because the function exposes per-fold sizes but
-    not the windows themselves; a `make_pipeline` parameter dissolves that
-    need, so it should not become its own item.
-23. **`fit_baseline`'s positional contract cannot align on a gapped time
-    axis.** The honest seasonal reference here is "the station's reading 24
-    hours earlier" — but with the unlabeled and offline hours dropped,
-    position `i − 24` is usually *not* the same hour yesterday, so
-    `strategy="seasonal_naive"` would be scored on a misalignment. (Flights
-    never hit this: its axis was complete, and the backlog note there —
-    "positional alignment is correct by construction when the scored window
-    starts right after training" — quietly assumed completeness.) The
-    project hand-rolls a time-indexed lookup
-    (`same_hour_yesterday_reference`: index the labeled series by
-    timestamp, shift the wanted timestamps by −24 h, fall back to the
-    training mean where the lag hour is also unlabeled). Candidate shapes:
-    a time-aware variant of the naive strategies (take a time column and a
-    period *duration*, align by index rather than position), or a
-    documented convention that positional baselines require a complete
-    axis. Caveat: first observation of the gapped-axis case — one
-    consumer's evidence, the same bar every helper here has had to clear.
-24. **The time axis was assembled by hand — item 13's second-project
-    trigger fired.** `build_time_axis` repeats flights' dance move for
-    move on different raw material: concatenate the pieces (`date` +
-    dotted `time` strings here; `year` + month-name there), parse with an
-    explicit `pd.to_datetime(format=...)`, raise on duplicates, sort, drop
-    the parts. The shape question item 13 left open now has two data
-    points, and they agree: what recurs is *parse-with-format + uniqueness
-    check + chronological sort*, not two-column splits or format-string
-    inference. Candidate shape: one helper taking the assembled string
-    series (the caller concatenates — that part is trivially
-    project-specific), a required explicit `format=`, and the uniqueness
-    raise; sorting stays with the caller (flights sorts the frame,
-    air_quality sorts and drops). Bar note, honest both ways: each copy is
-    still only ~6 lines of well-documented pandas, but the uniqueness
-    check is the part both projects independently judged load-bearing and
-    is exactly what raw `to_datetime` doesn't do.
-25. **A silently-wrong boundary parse had to be caught by an
-    expected-shape check — item 20's second-project trigger fired.**
-    The raw file's 114 all-empty trailing rows survive a plausible read
-    (`sep=";"` parses them as rows of NaN), so a frame can look healthy
-    while being 114 rows too long; only `len(df) == 9357` against the
-    published dataset size catches it — structurally the same save as
-    sms_spam's two-quote-swallowed-rows check. The shape question item 20
-    left open also now has two agreeing data points: both are *row-count
-    asserts against a published size*, neither needed a general
-    expected-shape check. Candidate shape: `assert_row_count(df, expected)`
-    in `ds.validation`, matching the stage's fluent-guard convention.
-    Bar note: the comparison is one line; what a helper adds is the
-    stage-consistent error type (`DataValidationError`, so boundary checks
-    fail uniformly) rather than saved code.
-26. **Sentinel-coded missingness is invisible until hand-converted.** The
-    file tags every gap as −200 — a legal-looking float — so before the
-    hand-rolled `replace(-200.0, nan)` *nothing* in the library can even
-    see the problem: `missing_value_report` reports zero missing while 90%
-    of a column is fake, `assert_in_range` is unsatisfiable, and
-    `summarize` averages sentinels into every statistic. The read-time
-    idiom (`load_raw(..., na_values=...)` forwarding to pandas) looks like
-    the library-free answer but hides a trap this file actually springs:
-    the sentinel is spelled `-200` in the integer-formatted columns and
-    `-200,0` in the decimal-comma ones (457 occurrences), so
-    `na_values=["-200"]` silently misses a fifth of the gap kinds — the
-    post-parse numeric replace is the robust move precisely because it
-    runs after decimal conversion. Candidate shapes: a
-    `mask_sentinels(df, values, columns=)` preprocessing helper, or a
-    documented gotcha in the Guide's acquire section (the item-17/18
-    precedent). Caveat: the replace is one line observed once; the
-    invisibility interaction (validation and EDA both blind until it
-    runs, so ordering is load-bearing) is what elevates it above a plain
-    aliasing helper.
+22. ~~**`cross_validate_by_time` cannot re-fit the transform chain per fold —
+    item 9's parked trigger finally fired.**~~ — **served in P13**: the
+    `make_pipeline` factory `cross_validate_kfold` already carried, added to
+    `cross_validate_by_time` (the recorded strongest candidate) — the same
+    `FitStep`-plan mechanism, re-fitted per fold on each fold's expanding
+    rolling-origin window only. `air_quality` now hands the CV the raw
+    training frame plus `make_pipeline=lambda frame: fit_pipeline(frame,
+    plan)`, and its hand-rolled `_fold_fit_state` boundary reproduction (the
+    `divmod` block-cutting copied from the library source, which existed
+    *only* to measure the drift out-of-band because the function exposed
+    per-fold sizes but not the windows) is deleted — the dogfood proof that
+    the parameter's shape is right. The item-9 finding does **not** repeat
+    here: on titanic the per-fold statistics changed but not one prediction
+    flipped (logistic regression absorbed the affine shifts), whereas on this
+    data the effect is real — the impute medians and scale centres vary enough
+    (`nox_gt`'s median spans 115–147, a 28% swing) that the leak-free protocol
+    measurably moves the per-fold CV numbers (every fold's MAE shifts; the CV
+    mean goes 0.406 → 0.409). The held-out metrics and every persisted
+    artifact stayed byte-identical (`cv_folds.csv` is the only output that
+    changes, exactly as it should). Recorded honestly either way.
+23. ~~**`fit_baseline`'s positional contract cannot align on a gapped time
+    axis.**~~ — **resolved in P13 by documenting the completeness
+    assumption**, not building a time-aware variant. `fit_baseline`'s
+    `"naive_last"`/`"seasonal_naive"` docstring now spells out that the two
+    naive strategies align *positionally* (`predict(n)` returns the next `n`
+    values by position), which is the true same-time-ago reference only on a
+    *gapless* continuation of the training axis; on a gapped axis (rows
+    dropped for missingness) position `i − season_length` is no longer the
+    same season back, so align by timestamp instead — the docstring gives the
+    recipe, and names the completeness the flights note ("positional alignment
+    is correct by construction") quietly assumed. A helper was not built: this
+    is one consumer's evidence (the same bar every helper here clears), a
+    time-aware baseline API from one data point would be a guess, and
+    air_quality's `same_hour_yesterday_reference` is a four-line time-indexed
+    lookup. Revisit if a second gapped-axis project hand-rolls the same
+    alignment.
+24. ~~**The time axis was assembled by hand — item 13's second-project
+    trigger fired.**~~ — **served in P13**, with the shape resolved to a
+    validation guard rather than the recorded parse-wrapper: `assert_unique(df,
+    column)` in `ds.validation`. The recorded candidate bundled parse +
+    uniqueness ("one helper taking the assembled string series + a required
+    `format=` + the uniqueness check"); but the parse line differs per project
+    (different formats, different concatenations), so only the uniqueness check
+    was ever shared, and wrapping `pd.to_datetime` behind a new name is exactly
+    what item 13 was struck for. `assert_unique` captures precisely the
+    load-bearing repeated part — the guard raw `to_datetime` doesn't do — as a
+    fluent guard matching the stage's family (returns the frame, raises
+    `DataValidationError` listing the duplicates), leaves the one-line parse a
+    one-liner (which the backlog said was fine), and generalizes to any
+    unique-key check. Both flights and air_quality now call it after their
+    (still project-local) concatenation-and-parse; both projects' persisted
+    artifacts stayed equivalent.
+25. ~~**A silently-wrong boundary parse had to be caught by an
+    expected-shape check — item 20's second-project trigger fired.**~~ —
+    **served in P13**: `assert_row_count(df, expected)` in `ds.validation`,
+    the recorded candidate shape. Item 20 was struck in P11 as below the bar
+    "observed once"; the trigger firing (air_quality's 114-trailing-NaN-row
+    trap — structurally sms_spam's two-swallowed-rows save) is what that strike
+    said would flip it, and the two data points agree on the shape (row-count
+    assert against a published size, no general expected-shape check needed).
+    What it adds over the one-line comparison is the stage-consistent
+    `DataValidationError`, so a boundary check fails like every other guard —
+    the same reason the whole `assert_*` family exists (`assert_no_nulls` is a
+    one-liner too). air_quality's `trim_raw` now closes with it; artifacts
+    unchanged.
+26. ~~**Sentinel-coded missingness is invisible until hand-converted.**~~ —
+    **resolved in P13 by documenting the gotcha**, not building
+    `mask_sentinels`: a new Acquire-section paragraph in the Guide (the
+    item-17/18 precedent — document where the next consumer meets the
+    problem). The replace is one line observed once, below the aliasing-helper
+    bar, but the *invisibility/ordering* interaction is the real lesson and
+    documents better than it wraps: the sentinel is invisible to
+    `missing_value_report`/`assert_in_range`/`summarize` until decoded, the
+    read-time `na_values=` idiom silently misses the decimal-comma spelling
+    (`-200,0`, 457 occurrences), and the robust post-parse numeric replace must
+    run *before* any validation or EDA sees the frame — the ordering is
+    load-bearing. air_quality keeps its one-line `mask_sentinels`. Revisit if a
+    second sentinel-coded project repeats it.
 
 Notes from the same run, for the record:
 
@@ -908,9 +927,11 @@ solving only the CV leak (a factory parameter alone) would have left item
 5's dance in both projects. A `FitStep` carries a callable closing over the
 varying keyword arguments (`columns=`, `strategy=`, `k=`), so the closed
 unions stay closed and `mypy --strict` types the plan without a parallel
-spec hierarchy. The same mechanism is what `cross_validate_kfold`'s
-`make_pipeline` factory re-runs inside each fold, so one plan serves the
-training run and leak-free cross-validation.
+spec hierarchy. The same mechanism is what both cross-validators'
+`make_pipeline` factory re-runs inside each fold (`cross_validate_kfold` on
+shuffled folds, `cross_validate_by_time` on each expanding rolling-origin
+window — the latter added in P13, item 22), so one plan serves the training
+run and leak-free cross-validation on either path.
 
 ### API discoverability: import by stage *(stands)*
 
