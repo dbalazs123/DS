@@ -1,14 +1,10 @@
 version: 2
+# Dependabot covers GitHub Actions only. The Python ("pip") ecosystem is
+# deliberately omitted: dependabot edits pyproject.toml floors but cannot
+# regenerate uv.lock, and CI runs `uv sync --locked`, so its pip PRs would be
+# un-mergeable by construction (an out-of-sync lock fails CI). Bump Python deps
+# deliberately with `uv lock --upgrade` and commit the refreshed uv.lock instead.
 updates:
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    groups:
-      python-dependencies:
-        patterns: ["*"]
-    open-pull-requests-limit: 5
-
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

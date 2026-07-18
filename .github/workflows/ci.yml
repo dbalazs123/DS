@@ -22,8 +22,12 @@ jobs:
         with:
           enable-cache: true
 
+      # --locked asserts uv.lock is in sync with pyproject.toml (all jobs use it),
+      # so lock drift fails CI loudly instead of being silently re-resolved.
+      # Refresh the lock with `uv lock` after editing deps; bump with
+      # `uv lock --upgrade`.
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --locked
 
       # Runs ruff, ruff-format, mypy and hygiene hooks exactly as a contributor
       # would locally, validating the pre-commit config itself.
@@ -48,7 +52,7 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --python ${{ matrix.python-version }}
+        run: uv sync --locked --python ${{ matrix.python-version }}
 
       - name: Test (pytest, with coverage gate)
         run: uv run pytest
@@ -69,7 +73,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies (with extras)
-        run: uv sync --extra all
+        run: uv sync --locked --extra all
 
       - name: Test with the extras available
         run: uv run pytest
