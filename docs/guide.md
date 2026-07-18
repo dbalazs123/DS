@@ -191,11 +191,23 @@ train/test split. For split-safe cleaning see
 ### Explore — `ds.eda`
 
 ```python
-from ds.eda import missing_value_report, summarize, top_correlations
+from ds.eda import (
+    missing_value_report,
+    summarize,
+    target_rate_by_category,
+    top_correlations,
+)
 
 summarize(df)              # per-column dtype, null counts, cardinality, stats
 missing_value_report(df)   # just the columns with gaps, worst first
 top_correlations(df, n=5)  # most correlated numeric pairs (redundancy / leakage)
+
+# top_correlations sees only numeric columns; target_rate_by_category is the
+# categorical read on the target — the mean target per level, ranked, with the
+# overall mean as a baseline. Descriptive only: a target rate fed back as a
+# feature is textbook leakage, so compute it on the training split when it
+# informs a modeling decision.
+target_rate_by_category(df, "occupation", "is_high_earner")
 ```
 
 ### Feature — `ds.features`
@@ -594,12 +606,14 @@ from ds.viz import (
     plot_outliers,
     plot_residuals,
     plot_series,
+    plot_target_rate,
     set_theme,
 )
 
 set_theme("notebook")                    # consistent matplotlib theme + palette
 plot_missingness(df)                     # bar chart of missing fractions
 plot_outliers(df)                        # bar chart of outlier counts per column
+plot_target_rate(df, "occupation", "y")  # per-level target rate, baseline line
 plot_confusion_matrix(y_true, y_pred)    # annotated heatmap (labels= names the ticks)
 plot_residuals(y_true, y_pred)           # residual-vs-predicted diagnostic
 plot_model_comparison(comparison)        # one metric across models, as bars
@@ -610,6 +624,7 @@ Each plot returns a matplotlib `Axes` and accepts an existing `ax=`, so they
 compose into multi-panel figures. They pair with the `ds.eda`,
 `ds.preprocessing` and `ds.evaluation` helpers (`plot_missingness` visualizes
 `missing_value_report`, `plot_outliers` visualizes `flag_outliers`,
+`plot_target_rate` visualizes `target_rate_by_category`,
 `plot_confusion_matrix` visualizes `confusion_frame`, and
 `plot_model_comparison` visualizes `compare_models`).
 

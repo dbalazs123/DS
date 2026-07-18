@@ -11,7 +11,7 @@ import pandas as pd
 from cycler import cycler
 from matplotlib.axes import Axes
 
-from ds.eda import missing_value_report
+from ds.eda import missing_value_report, target_rate_by_category
 from ds.evaluation import confusion_frame
 from ds.preprocessing import OutlierMethod, flag_outliers
 
@@ -116,6 +116,47 @@ def plot_outliers(
     ax.set_xlabel("outlier count")
     ax.invert_yaxis()  # keep the worst column at the top
     ax.set_title(f"Outliers by column ({method})")
+    return ax
+
+
+def plot_target_rate(
+    df: pd.DataFrame,
+    column: str,
+    target: str,
+    *,
+    min_count: int = 1,
+    ax: Axes | None = None,
+) -> Axes:
+    """Plot a categorical column's per-level target rate, highest first.
+
+    A horizontal bar chart of :func:`ds.eda.target_rate_by_category` with a
+    dashed reference line at the overall target mean, so it is obvious at a
+    glance which levels sit above the baseline and which below — the categorical
+    read on the target that :func:`plot_missingness` and :func:`plot_outliers`
+    are for missingness and outliers.
+
+    Args:
+        df: The DataFrame to summarize.
+        column: The categorical column to group by.
+        target: A numeric column whose per-level mean is the target rate.
+        min_count: Drop levels seen fewer than this many times; forwarded to
+            :func:`ds.eda.target_rate_by_category`.
+        ax: Existing Axes to draw on; a new figure is created when omitted.
+
+    Returns:
+        The Axes the chart was drawn on.
+    """
+    report = target_rate_by_category(df, column, target, min_count=min_count)
+    ax = _resolve_ax(ax)
+    levels = [str(level) for level in report.index]
+    ax.barh(levels, report["target_rate"].to_numpy(), color=PALETTE[0])
+    if not report.empty:
+        baseline = float(report["baseline"].iloc[0])
+        ax.axvline(baseline, color="black", linestyle="--", linewidth=1.0, label="baseline")
+        ax.legend()
+    ax.set_xlabel(f"mean {target}")
+    ax.invert_yaxis()  # keep the highest-rate level at the top
+    ax.set_title(f"{target} rate by {column}")
     return ax
 
 
@@ -315,5 +356,6 @@ __all__ = [
     "plot_outliers",
     "plot_residuals",
     "plot_series",
+    "plot_target_rate",
     "set_theme",
 ]

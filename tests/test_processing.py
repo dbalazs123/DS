@@ -9,7 +9,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ds.eda import missing_value_report, summarize, top_correlations
+from ds.eda import (
+    missing_value_report,
+    summarize,
+    target_rate_by_category,
+    top_correlations,
+)
 from ds.features import (
     OneHotCategories,
     OrdinalCategories,
@@ -340,6 +345,52 @@ def test_top_correlations_handles_too_few_numeric_columns() -> None:
     out = top_correlations(pd.DataFrame({"only": [1, 2, 3], "text": ["a", "b", "c"]}))
     assert out.empty
     assert list(out.columns) == ["feature_a", "feature_b", "correlation"]
+
+
+def test_target_rate_by_category_ranks_levels_by_target_mean() -> None:
+    df = pd.DataFrame(
+        {
+            "grp": ["a", "a", "a", "a", "b", "b", "b", "b"],
+            "y": [1, 1, 1, 0, 0, 0, 0, 1],  # a: 0.75 positive, b: 0.25
+        }
+    )
+    out = target_rate_by_category(df, "grp", "y")
+    assert list(out.index) == ["a", "b"]  # highest target_rate first
+    assert out.index.name == "grp"
+    assert list(out.columns) == ["count", "frac", "target_rate", "baseline"]
+    assert out.loc["a", "target_rate"] == pytest.approx(0.75)
+    assert out.loc["b", "target_rate"] == pytest.approx(0.25)
+    assert out.loc["a", "count"] == 4
+    assert out.loc["a", "frac"] == pytest.approx(0.5)
+    # baseline is the overall target mean, constant across levels.
+    assert out["baseline"].nunique() == 1
+    assert out.loc["a", "baseline"] == pytest.approx(0.5)
+
+
+def test_target_rate_by_category_reports_missing_as_its_own_level() -> None:
+    df = pd.DataFrame({"grp": ["a", "a", None, None], "y": [1, 0, 1, 1]})
+    out = target_rate_by_category(df, "grp", "y")
+    # The NaN level is kept (target rate 1.0), not dropped like a groupby default.
+    assert out["count"].sum() == 4
+    assert out["target_rate"].max() == pytest.approx(1.0)
+
+
+def test_target_rate_by_category_drops_sparse_levels_below_min_count() -> None:
+    df = pd.DataFrame({"grp": ["a", "a", "a", "rare"], "y": [1, 0, 1, 1]})
+    out = target_rate_by_category(df, "grp", "y", min_count=2)
+    assert list(out.index) == ["a"]
+
+
+def test_target_rate_by_category_rejects_non_numeric_target() -> None:
+    df = pd.DataFrame({"grp": ["a", "b"], "y": ["x", "y"]})
+    with pytest.raises(ValueError, match="numeric"):
+        target_rate_by_category(df, "grp", "y")
+
+
+def test_target_rate_by_category_rejects_unknown_columns() -> None:
+    df = pd.DataFrame({"grp": ["a", "b"], "y": [1, 0]})
+    with pytest.raises(KeyError):
+        target_rate_by_category(df, "missing", "y")
 
 
 def test_add_datetime_features(sample_df: pd.DataFrame) -> None:

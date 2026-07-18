@@ -6,6 +6,29 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `ds.eda.target_rate_by_category(df, column, target, *, min_count=1)` and the
+  paired `ds.viz.plot_target_rate` — the categorical counterpart to
+  `top_correlations`, which is numeric-only. The helper returns, per level of a
+  categorical column, its `count`, `frac`, the mean `target` within the level
+  (the "target rate" — a 0/1 target's positive rate, or any numeric target's
+  group mean) and the overall `baseline`, sorted by target rate descending, with
+  missing values kept as their own level. It is *descriptive*, not a fitted
+  feature (a target rate fed back as a model input is textbook leakage; the
+  docstring says to compute it on the training split when it informs a
+  decision). The plot draws per-level bars with a dashed baseline reference line,
+  per the reuse-across-stages rule. This closes `ROADMAP.md` friction item 29
+  (the `ds.eda` categorical↔target gap, parked in P15): `eda` was the one thin
+  general-purpose stage and four of seven projects are heavily-categorical
+  classification, so the signal had fired repeatedly. The
+  positive-rate-by-level *group table* was chosen over the Cramér's-V /
+  mutual-information *ranker* (a different question — which level, not which
+  column — and no project has hand-rolled it). A `ds.eda` addition, so the
+  top-level public surface (`tests/test_public_api.py`) is unchanged.
+  `projects/adult_income` adopts it in its Explore stage (>50K rate by
+  `marital_status` and `occupation`) to prove it earns its place; its end-to-end
+  test passes unchanged.
+
 ## [0.2.0] - 2026-07-18
 
 ### Added

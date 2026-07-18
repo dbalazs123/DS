@@ -36,11 +36,11 @@ tests/         Test suite mirroring src/ds/
 | Acquire | `ds.io` | `load_table`, `save_table` |
 | Validate | `ds.validation` | `require_columns`, `assert_no_nulls` |
 | Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns` |
-| Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
+| Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations`, `target_rate_by_category` |
 | Feature | `ds.features` | `add_datetime_features`, `one_hot_encode`, `collapse_categories` |
 | Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `train_test_split_random`, `fit_baseline`, `save_model`/`load_model`, `count_tokens` |
 | Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `cross_validate_by_time`, `compare_models` |
-| Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_series`, `plot_confusion_matrix`, `plot_residuals`, `plot_model_comparison` |
+| Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_target_rate`, `plot_series`, `plot_confusion_matrix`, `plot_residuals`, `plot_model_comparison` |
 
 Cross-cutting: `ds.config`, `ds.logging`, `ds.reproducibility`.
 

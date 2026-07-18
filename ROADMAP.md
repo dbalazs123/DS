@@ -15,11 +15,11 @@ working set of the most-reached-for helpers. Built out so far:
 | Acquire | `ds.io` | `load_table`, `save_table` (csv/tsv/parquet/json/jsonl), `load_raw`, `save_processed`, `fetch_dataset` (checksum-verified multi-mirror download), `save_params`/`load_params` (fitted-parameter JSON) |
 | Validate | `ds.validation` | `require_columns`, `assert_row_count`, `assert_no_nulls`, `assert_in_range`, `assert_in_set`, `assert_unique`, `assert_dtypes`, `check_schema` |
 | Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns`, `drop_duplicate_rows`, `coerce_dtypes`, `flag_outliers`, `clip_outliers`, `impute_missing` + split-safe pairs `fit_outlier_bounds`/`apply_flag_outliers`/`apply_clip_outliers`, `fit_impute_values`/`apply_impute_missing` |
-| Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
+| Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations`, `target_rate_by_category` (per-level grouped target rate, the categorical read on the target) |
 | Feature | `ds.features` | `add_datetime_features` (selectable `features=` subset; opt-in `_elapsed_months` trend counter), `one_hot_encode`, `ordinal_encode`, `collapse_categories` (top-k + "other"), `scale_features`, `bin_column` + split-safe pairs `fit_one_hot_categories`/`apply_one_hot_encode`, `fit_ordinal_categories`/`apply_ordinal_encode`, `fit_topk_categories`/`apply_collapse_categories`, `fit_scale_params`/`apply_scale_features` |
 | Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `train_test_split_random` (shuffled, optionally stratified), `fit_baseline` (mean / majority / naive-last / seasonal-naive), `save_model`/`load_model` (joblib persistence), `count_tokens` |
 | Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics`, `cross_validate_by_time` (rolling origin; optionally re-fits a transform pipeline per fold via `make_pipeline`), `cross_validate_kfold` (optionally stratified; same `make_pipeline` re-fit), `compare_models` |
-| Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_confusion_matrix`, `plot_residuals`, `plot_model_comparison`, `plot_series` (composable series/forecast plot) |
+| Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_target_rate` (per-level target rate + baseline line), `plot_confusion_matrix`, `plot_residuals`, `plot_model_comparison`, `plot_series` (composable series/forecast plot) |
 
 Supporting: `ds.pipeline` (a persistable fit-once/apply-many `Pipeline` over
 the `fit_*`/`apply_*` pairs, fitted in one call from a `FitStep` plan via
@@ -45,14 +45,15 @@ original 2026-07 stop; the **post-P15 refresh** that supersedes them:
   `adult_income`), every backlog has been dispatched, and *every* library
   addition since P1 traces to real-project friction. Release 0.2.0 shipped. The
   promotion loop is the settled way this repo grows.
-- **The live gaps are now `eda` depth and forecasting/text depth.** `eda` is the
-  one still-thin general-purpose stage (three read-only helpers, no
-  categorical↔target view — item 29), and while forecasting (`flights`) and
-  text (`sms_spam`) each have one project, both delegated their modeling heart
-  to raw sklearn, so the forecasting/backtest and vectorization/text-feature
-  surfaces are still shallow. The next direction (the "Next up" entry) targets
-  exactly these: close the `eda` gap, then run a second forecasting and a second
-  text project chosen to *pull* that depth.
+- **The live gaps are forecasting/text depth (and, until this pass, `eda`
+  depth).** The `eda` categorical↔target gap (item 29) is now **closed** —
+  `target_rate_by_category` + `plot_target_rate` give the stage the categorical
+  read on the target it lacked. The remaining depth gaps are forecasting and
+  text: while `flights` (forecasting) and `sms_spam` (text) each have one
+  project, both delegated their modeling heart to raw sklearn, so the
+  forecasting/backtest and vectorization/text-feature surfaces are still
+  shallow. The next direction (the "Next up" entry) targets exactly these: run a
+  second forecasting and a second text project chosen to *pull* that depth.
 
 The original verdicts, and what they implied at the time:
 
@@ -456,22 +457,32 @@ The lesson is the ordering rule above: demand first.
     that one-liner behind a new name — the item-13/15/20/26 precedent — so it stays
     documented; `adult_income` keeps its one-line `decode_sentinels`. A **third**
     differently-typed sentinel would force the thin helper.
-  - Item 29 (`ds.eda` has no categorical↔target association view) — **struck /
-    parked, not built.** Unlike the fetch and sentinel dances, this gap was worked
-    around by *thinking* (domain knowledge picked the categorical features), not by
-    hand-rolled code, so there is nothing to promote and no consumer to document at;
-    the candidate shape is genuinely open (Cramér's-V / mutual-information ranker vs
-    a positive-rate-by-level group table vs a `bin_column`-style profiler). Trigger
-    recorded: a second heavily-categorical project that actually hand-rolls the
-    groupby, which also decides the shape. Do not build speculatively.
+  - Item 29 (`ds.eda` has no categorical↔target association view) — parked in
+    P15, **served in the follow-on goal-alignment pass**: built as
+    `target_rate_by_category` (the positive-rate-by-level group table) plus
+    `plot_target_rate`, adopted by `adult_income`. Full rationale — why the group
+    table over the Cramér's-V ranker, and why descriptive-not-fitted — is inline
+    in the friction backlog entry below.
 
-**Next up:** P15 served the `adult_income` backlog (items 27–29), so the demand
-queue is empty again — the next step is an **eighth demand loop**: a new
-real-data project, chosen by the grep-driven rule (grep which library surfaces
-still have no real consumer and pick the data shape that stresses the thinnest
-cluster by absence), whose friction regenerates the backlog. Deprioritized until
-a project pulls them: more EDA helpers (item 29's categorical↔target view is
-parked here), more cookbook recipes, more CLI.
+**Next up:** the goal-alignment pass after P15 closed the `eda` categorical↔target
+gap (item 29 — `target_rate_by_category` / `plot_target_rate`), so the remaining
+live gaps are **forecasting and text depth**. The next step is therefore an
+**eighth demand loop that deliberately widens those two parked capabilities**:
+run it as an ordinary demand loop (add project → serve friction), but pick two
+datasets that stress the shallow surfaces —
+
+- a **second forecasting project** on data a datetime-feature + baseline approach
+  handles poorly, so friction pulls a genuine forecasting-model / backtest surface
+  into `ds.modeling` / `ds.evaluation` instead of delegating to raw sklearn, and
+- a **second NLP/text project** (beyond `sms_spam`) that stresses vectorization and
+  text features enough to fire item 18 (a `ds.pipeline` vectorization step kind)
+  and item 21 (text feature helpers), plus a real modeling consumer for
+  `count_tokens`.
+
+Both remain demand-first: the datasets are chosen to *pull* the depth, and no
+speculative forecasting/text helper is built ahead of the friction. Deprioritized
+until a project pulls them: a Cramér's-V / mutual-information categorical *ranker*
+(item 29's unbuilt sibling shape), more cookbook recipes, more CLI.
 
 ## Friction backlog (from `projects/nyc_taxis`)
 
@@ -1043,6 +1054,29 @@ now fire on their agreed second occurrence. Numbering continues from the
     positive-rate-by-level group table vs a `bin_column`-style categorical
     profiler). Trigger: a second heavily-categorical project that actually
     hand-rolls the groupby, which also decides the shape. Not built speculatively.
+
+    **Follow-on: served.** The goal-alignment pass that followed P15 promoted
+    this from parked to built, because it is the one thin general-purpose stage
+    (`eda`, three read-only helpers) and four of seven projects are
+    heavily-categorical classification, so the signal has fired repeatedly even
+    where each project reached for domain knowledge instead of code. The shape
+    chosen among the three candidates is the **positive-rate-by-level group
+    table**: `ds.eda.target_rate_by_category(df, column, target, *,
+    min_count=1)` returns, per level of a categorical column, its `count`,
+    `frac`, the mean `target` within the level (the "target rate" — a 0/1
+    target's positive rate, or any numeric target's group mean) and the overall
+    `baseline`, sorted by target rate descending — the categorical counterpart
+    to `top_correlations` (which is numeric-only). It is *descriptive*, not a
+    fitted feature (a target rate fed back as an input is textbook leakage; the
+    docstring says to compute it on the training split when it informs a
+    decision), and it pairs with `ds.viz.plot_target_rate` (per-level bars with a
+    dashed baseline line) per the reuse-across-stages rule. The Cramér's-V /
+    mutual-information *ranker* across columns was not built — it answers a
+    different question (which column, not which level) and no project has
+    hand-rolled it; it stays the open shape a future association-ranking friction
+    would pull. `adult_income` adopts the group table in its Explore stage
+    (>50K rate by `marital_status` and `occupation`) to prove it earns its place;
+    its end-to-end test passes unchanged.
 
 Notes from the same run, for the record:
 
