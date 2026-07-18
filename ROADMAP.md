@@ -26,11 +26,12 @@ the `fit_*`/`apply_*` pairs, fitted in one call from a `FitStep` plan via
 `fit_pipeline`), `ds` CLI (`ds version`, `ds new`, `ds run`), a
 per-stage docs Guide with cross-stage recipes, a `test-extras` CI job,
 single-sourced version, and an extended project template. `projects/` holds the
-synthetic worked example (`_example`) and six **real-data** projects:
+synthetic worked example (`_example`) and seven **real-data** projects:
 `nyc_taxis` (regression), `titanic` (binary classification), `flights`
 (forecasting), `diamonds` (multiclass classification), `sms_spam` (text /
-binary spam classification) and `air_quality` (sensor gap-filling regression
-on an hourly time axis).
+binary spam classification), `air_quality` (sensor gap-filling regression
+on an hourly time axis) and `adult_income` (heavily-categorical binary income
+classification).
 
 ## Goal evaluation (2026-07)
 
@@ -46,8 +47,8 @@ extending recent momentum. Verdicts, and what they imply:
   now be pulled by a project need, not pushed from a candidate list. The
   friction backlogs below are the queue (the first six lists — `nyc_taxis`,
   `titanic`, `flights`, `diamonds`, `sms_spam` and `air_quality` — are fully
-  dispatched; P12 ran the sixth demand loop and P13 served its backlog, so the
-  demand queue is empty pending a seventh loop).
+  dispatched; P14 ran the seventh demand loop (`adult_income`) and refilled the
+  queue with items 27–29, pending a P15 that serves them).
 - **Fit-once / score-later** — *stopped one step short of its own goal;
   since closed (P2).* Fitted parameters and the `Pipeline` persist as strict
   JSON, but at evaluation time the fitted **model** could not be persisted at
@@ -346,11 +347,47 @@ orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
     section gotcha (the `na_values=` decimal-comma trap and the load-bearing
     ordering).
 
-**Next up:** the `air_quality` backlog is served (P13), so the demand queue is
-empty again — the next step is a **seventh demand loop**: a new real-data
-project, chosen by the established rule (grep which library surfaces still have
-no real consumer), whose friction regenerates the backlog. Deprioritized until
-a project pulls them: more EDA helpers, more cookbook recipes, more CLI.
+- **P14 — regenerate demand with a seventh real-data project (heavily
+  categorical): DONE.** `projects/adult_income` predicts whether a 1994 US
+  census respondent earns over $50K — the 32,560-row training split of the UCI
+  Adult / Census Income dataset (a GitHub mirror of the original `adult.data`,
+  downloaded once into git-ignored `data/raw/` and verified by pinned sha256
+  because the UCI archive is not reachable from every network). Chosen by the
+  P8 rule after grepping which surfaces still had no real consumer, and
+  deliberately weighted toward the thinnest *cluster* — categorical /
+  high-cardinality feature handling: `collapse_categories`/`fit_topk_categories`
+  had a single consumer (nyc_taxis), one-hot `drop_first`/`dummy_na` and the
+  `flag_outliers` flag path had none, and "heavily-categorical / wide" was an
+  unmet data shape. First real consumers earned: one-hot `drop_first=True` (the
+  wide indicator matrix's dummy-trap guard, which a full-rank linear model
+  needs) and the `flag_outliers` *flag*-not-clip path (the ~92%-zero
+  `capital_gain`/`capital_loss` are reported but kept — clipping would erase the
+  large-gain signal). Second consumers: `fit_topk_categories`/
+  `collapse_categories` (the 41-country `native_country` and 14-trade
+  `occupation` tails → `"other"`) and the `labels=` binary display mapping.
+  Full lifecycle on `ds` + scikit-learn: checksum-verified fetch, boundary
+  validation (`assert_row_count` + a `check_schema` numeric-dtype pin), the
+  `"?"` sentinels decoded to NaN and the string target encoded 0/1, a stratified
+  split, a four-step fit plan (collapse tails / mode-impute the sentinels / wide
+  one-hot with `drop_first` / scale) fitted on the training split, stratified
+  5-fold CV with the plan re-fitted per fold (the fitted state — occupation
+  modes, kept top-k countries, scale centres — genuinely varies fold to fold),
+  pipeline + model persisted and the held-out split scored from reloaded state.
+  Held-out (>50K = positive): accuracy 0.861 / F1 0.679 / precision 0.763 /
+  recall 0.611 vs an interpretable marital-status rule (0.713 / 0.590) and the
+  majority class (0.759 / 0.000); CV F1 0.653 ± 0.007. The honest headline is
+  what the library did *not* fight: the categorical cluster it was picked to
+  stress by absence existed and composed first-try, so the project validates
+  that surface more than it extends it — the two genuinely new gaps (items 27
+  and 28) both have triggers that were already recorded and now fire. Per the
+  demand-first rule the project promotes nothing itself; its friction list is
+  the new backlog below.
+
+**Next up:** the seventh demand loop is done (P14), so the queue is refilled —
+the next step is a **P15** serving the `adult_income` backlog (items 27–29) in
+observed-pain order, led by the checksum-verified multi-mirror fetch helper
+(air_quality's trigger has now fired). Deprioritized until a project pulls them:
+more EDA helpers, more cookbook recipes, more CLI.
 
 ## Friction backlog (from `projects/nyc_taxis`)
 
@@ -854,6 +891,120 @@ sensor-drift term; `train_test_split_by_time` (third consumer);
 overlay; and the whole persistence story (`fit_pipeline` →
 `save_params`/`load_params`, `save_model`/`load_model`, held-out window
 scored from reloaded state only).
+
+## Friction backlog (from `projects/adult_income`)
+
+The seventh run of the demand loop — the first heavily-categorical,
+high-cardinality one. It was picked precisely to stress the categorical cluster
+by absence, and the honest result is a *short* backlog: that cluster existed and
+composed first-try, so the project generated fewer new gaps than it validated
+old surface (see "where the library did not fight" below). The two gaps it did
+surface both have triggers that were *already recorded* by earlier projects and
+now fire on their agreed second occurrence. Numbering continues from the
+`air_quality` list; in observed-pain order:
+
+27. **Checksum-verified multi-mirror fetch is hand-rolled a second time — the
+    fetch-helper trigger fires.** `adult_income`'s `fetch_raw` is a ~25-line
+    near-verbatim copy of `air_quality`'s: download into `settings.raw_dir`, try
+    each mirror in a tuple, verify the payload's sha256 against a pinned digest,
+    re-verify (not trust) a cached copy so a partial earlier download can't
+    poison later runs. `air_quality` recorded exactly this trigger ("if a second
+    mirror-fetched project repeats the dance, that is the trigger for a fetch
+    helper"), and it has now fired: two projects carry the same dance with only
+    the URL tuple, filename and checksum varying — all *data*, not code. This is
+    above the helper bar (a second verbatim consumer, not a one-liner), and is
+    the backlog's strongest build candidate. Candidate shape: an
+    `ds.io.fetch_dataset(name, urls, *, sha256, settings)` (or
+    `download_verified`) returning the verified local path. Honest open
+    questions for the build: whether the checksum is *required* (the two
+    consumers that need it are the non-seaborn mirrors) or *optional* (so the
+    seaborn-mirror projects — `titanic`/`nyc_taxis`/`diamonds`, which fetch with
+    a plain "download if absent" and no pin — could adopt it too), and whether
+    the cache re-verify belongs inside or is left to the caller. Serve in P15.
+28. **A string `"?"` missing-sentinel is decoded by hand — air_quality item
+    26's second-sentinel trigger fires, in a new flavor.** Three categorical
+    columns (`workclass`/`occupation`/`native_country`) tag an unknown with a
+    literal `"?"`; `decode_sentinels` is the one-line `df[cols].replace("?",
+    np.nan)` that makes the gaps visible to `missing_value_report` and fillable
+    by the mode-impute step. Item 26 (numeric −200 sentinels) was resolved by
+    documentation with the trigger "revisit if a second sentinel-coded project
+    repeats it"; `adult_income` is that project — but the sentinel is a *string*
+    here, not a number, which is itself the finding: the recurring need is
+    "replace a per-project sentinel *value* in named columns with NaN", and the
+    value (−200 vs `"?"`), its type, and the target columns differ every time,
+    so the shared part is exactly the one-line `replace` — which spells it as
+    clearly as any wrapper would. Leaning **stays a documented one-liner / at
+    most a thin `mask_sentinels(df, columns, sentinel)`**: the *lesson* item 26
+    documented (the sentinel is invisible to validation/EDA until decoded, and
+    the decode must run before any of them sees the frame) is the load-bearing
+    part and is already in the Guide; the decode itself carries no logic to
+    share. Decide the thin-helper-vs-stays-documented question in P15 now that
+    two differently-typed sentinels are on the record; a third would settle it.
+29. **`ds.eda` has no categorical↔target association view.** `top_correlations`
+    is numeric-only, so on a dataset whose strongest predictors are categorical
+    (marital status, occupation, education) the explore stage cannot rank them —
+    the feature choices here leaned on domain knowledge and the confusion
+    structure instead. Recorded, but **below the bar and struck for now**: no
+    workaround was hand-rolled (unlike the fetch and sentinel dances, this gap
+    was *worked around by thinking*, not by code), so there is nothing to promote
+    yet, and the candidate shape is genuinely open (a Cramér's-V / mutual-
+    information ranker vs a positive-rate-by-level group table vs a
+    `bin_column`-style categorical profiler). Trigger: a second heavily-
+    categorical project that actually hand-rolls the groupby, which also decides
+    the shape.
+
+Notes from the same run, for the record:
+
+- **The value-whitespace friction dissolved into a `load_raw` kwarg.** Every
+  categorical value in the raw file is space-padded (`" Private"`), and the
+  target labels too (`" <=50K"`). Rather than a hand-rolled `.str.strip()` pass
+  (which `standardize_column_names` does for column *names* but nothing does for
+  *values*), `skipinitialspace=True` forwarded through `load_raw` strips it at
+  read time — the third consumer of that pandas-kwargs forwarding after
+  `sms_spam` and `air_quality`. A `strip_string_values` helper was therefore
+  *not* needed; recorded so a later heavily-categorical project that meets
+  trailing (not leading) whitespace, which `skipinitialspace` doesn't touch,
+  knows this is where that helper's trigger would sit.
+- **Exact duplicate rows kept, deliberately (the titanic call).** 24 rows are
+  exact duplicates, but with only these coarse survey attributes and no
+  respondent identifier, identical vectors are expected distinct people —
+  `drop_duplicate_rows` would delete real records. This is titanic's keep, the
+  deliberate opposite of the diamonds/sms_spam drop (there the duplicates were
+  split-leaking verbatim re-entries a model could memorize; a penalized linear
+  model on census demographics cannot).
+- **Item 15's row-mask trigger did not fire.** No predicate row-drop was
+  hand-rolled at all (no range mask, no offline mask; duplicates kept, only the
+  train/test split partitions rows). The row-mask family stays parked, still
+  leaning "no helper" — a *same-shape* fourth mask would be needed to flip it,
+  and this project added none.
+- **Item 21's text-helper trigger did not fire** — no text columns; nothing
+  from the text-features family was hand-rolled. Stays parked.
+- **`count_tokens` stays half-earned.** No text pipeline here, so the
+  accurate-count path is untouched; the verdict is unchanged — no action until a
+  project needs it badly enough to declare a hard `tiktoken` dependency.
+
+Where the library did *not* fight (the honest headline of this pick): the whole
+categorical cluster it was chosen to stress composed first-try.
+`fit_topk_categories`/`collapse_categories` took two high-cardinality columns at
+once (`native_country` 41→10+other, `occupation` 14→10+other) — the second
+consumer, and the first to lean on the collapse for genuine tail-sparsity
+(Armed-Forces has nine rows) rather than nyc_taxis's cardinality alone —
+including the strict-JSON round-trip of the kept-category tuples through the
+persisted pipeline; `fit_one_hot_categories(drop_first=True)` produced the
+full-rank wide matrix (48 indicator columns) a penalized logistic regression
+needs, the first `drop_first` consumer; `flag_outliers` reported the capital
+columns' IQR-fence counts without touching them (the first flag-not-clip
+consumer, with `plot_outliers` on the same two columns); `fit_impute_values(
+strategy="most_frequent")` filled the sentinel gaps (third consumer, at scale);
+`check_schema(coerce=True)` pinned the six numeric dtypes; `assert_row_count`
+and `assert_in_set` guarded the boundary; `train_test_split_random(stratify=)`
+and `cross_validate_kfold(stratify=True, make_pipeline=...)` held the ~24/76
+balance while re-fitting genuinely-varying per-fold state (an air_quality-style
+real per-fold refit, not titanic's no-op); `fit_baseline("majority")` gave the
+numeric-label floor (item 6's scoping held a fourth time); the `labels=` binary
+mapping put the income names on the confusion/per-class axes (third consumer);
+and the whole persistence story (`fit_pipeline` → `save_params`/`load_params`,
+`save_model`/`load_model`, held-out split scored from reloaded state only).
 
 Kept for the record — CLAUDE.md's engineering notes point here. Each was
 re-checked in the 2026-07 evaluation; verdicts inline.

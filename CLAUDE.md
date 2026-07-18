@@ -33,7 +33,9 @@ in the **same** change.
 │                          #   diamonds = real-data cut grading, multiclass;
 │                          #   sms_spam = real-data spam detection, text;
 │                          #   air_quality = real-data sensor gap-filling,
-│                          #   hourly-axis regression with real missingness)
+│                          #   hourly-axis regression with real missingness;
+│                          #   adult_income = real-data income classification,
+│                          #   heavily categorical / high-cardinality)
 ├── templates/project/     # copier template for new projects
 ├── notebooks/             # exploratory notebooks
 ├── data/                  # git-ignored: raw/ interim/ processed/

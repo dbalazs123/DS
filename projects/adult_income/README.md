@@ -1,0 +1,25 @@
+# Adult Income
+
+## Run
+
+```bash
+uv run ds run adult_income
+```
+
+## Test
+
+```bash
+uv run pytest projects/adult_income --no-cov
+```
+
+(`--no-cov` skips the library's repo-wide coverage gate, which doesn't apply
+to a single project's tests.)
+
+## Layout
+
+- `pipeline.py` — the analysis, stage by stage.
+- `notebooks/` — exploratory notebooks for this project.
+- `tests/` — checks for the pipeline.
+
+Built on the shared [`ds`](../../src/ds) toolkit. Read inputs from `data/raw/`,
+write outputs to `data/processed/`.
