@@ -7,6 +7,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Weekly `deps-upgrade` GitHub Actions workflow
+  (`.github/workflows/deps-upgrade.yml`, also `workflow_dispatch`): runs
+  `uv lock --upgrade` and, when the lock moves, opens a single reviewable PR with
+  the refreshed lock and the result of an inline `make check` against it. This
+  restores automated Python-dependency *visibility* after dependabot was scoped to
+  GitHub Actions only — in a lock-consistent way dependabot's pip stream could
+  not (it can't regenerate `uv.lock`). Nothing auto-merges; a red inline check on
+  breaking majors is expected and is the point.
 - `ds.io.fetch_dataset(name, urls, *, sha256, settings=None)` (P15 — serving
   `adult_income` friction item 27): download a raw file into the project's
   raw-data directory, trying each mirror in order and verifying the payload's
