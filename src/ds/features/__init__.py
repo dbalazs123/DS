@@ -22,6 +22,9 @@ BinMethod = Literal["width", "quantile"]
 DatetimeFeature = Literal[
     "year", "month", "day", "dayofweek", "hour", "is_weekend", "elapsed_months"
 ]
+TextFeature = Literal["char_count", "word_count", "avg_word_length"]
+# Emission order for text_features.
+_TEXT_FEATURES: tuple[TextFeature, ...] = ("char_count", "word_count", "avg_word_length")
 
 # Calendar-position features — the default emission of add_datetime_features.
 _CALENDAR_FEATURES: tuple[DatetimeFeature, ...] = (
@@ -427,6 +430,69 @@ def add_lagged_features(
         out[name] = out[column].shift(k)
     if dropna:
         out = out.dropna(subset=lag_columns).reset_index(drop=True)
+    return out
+
+
+def text_features(
+    df: pd.DataFrame,
+    column: str,
+    *,
+    features: Sequence[TextFeature] | None = None,
+) -> pd.DataFrame:
+    """Expand a text column into simple length/shape features.
+
+    Adds ``<column>_char_count`` (characters), ``<column>_word_count``
+    (whitespace-separated tokens) and ``<column>_avg_word_length`` (mean
+    non-space characters per token, ``0`` for empty text) — the cheap,
+    model-ready descriptors of a document's size and density that repeatedly earn
+    their place beside a text vectorizer (spam messages run short, long-form
+    articles run long, and the two differ in word length). It is the text
+    counterpart to :func:`add_datetime_features`: a stateless, one-call expansion
+    of one column into a documented set of derived columns.
+
+    These are deliberately *encoding-independent* string operations — unlike
+    :func:`ds.modeling.nlp.count_tokens`, whose BPE/whitespace count depends on
+    the installed extras — so the same frame yields the same columns in any
+    environment, which is what makes them safe to put in front of a fitted model.
+    Being stateless (a row's features depend only on its own text), it is also
+    safe to apply before a train/test split.
+
+    Args:
+        df: The source DataFrame.
+        column: Name of a string column.
+        features: Which features to emit (names without the column prefix);
+            ``None`` emits all three, in the documented order.
+
+    Returns:
+        A new DataFrame with the added ``<column>_<feature>`` columns.
+
+    Raises:
+        KeyError: If ``column`` is not present.
+        ValueError: If ``features`` is empty or names an unknown feature.
+    """
+    if column not in df.columns:
+        raise KeyError(column)
+    requested = _TEXT_FEATURES if features is None else tuple(features)
+    if not requested:
+        raise ValueError("features must name at least one text feature")
+    unknown = sorted(set(requested) - set(_TEXT_FEATURES))
+    if unknown:
+        raise ValueError(f"unknown text features {unknown}; choose from {list(_TEXT_FEATURES)}")
+    out = df.copy()
+    text = out[column].astype(str)
+    selected = set(requested)
+    char_count = text.str.len()
+    word_count = text.str.split().str.len()
+    if "char_count" in selected:
+        out[f"{column}_char_count"] = char_count.astype("int64")
+    if "word_count" in selected:
+        out[f"{column}_word_count"] = word_count.astype("int64")
+    if "avg_word_length" in selected:
+        nonspace = text.str.replace(r"\s+", "", regex=True).str.len()
+        # Divide by a denominator of 1 where there are no words, then zero those
+        # rows out — keeps the column float64 with no NaN/object detour.
+        avg = (nonspace / word_count.mask(word_count == 0, 1)).astype("float64")
+        out[f"{column}_avg_word_length"] = avg.mask(word_count == 0, 0.0)
     return out
 
 
@@ -940,4 +1006,5 @@ __all__ = [
     "one_hot_encode",
     "ordinal_encode",
     "scale_features",
+    "text_features",
 ]

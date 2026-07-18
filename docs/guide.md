@@ -221,11 +221,13 @@ from ds.features import (
     one_hot_encode,
     ordinal_encode,
     scale_features,
+    text_features,
 )
 
 df = add_datetime_features(df, "date")               # year, month, dayofweek, hour, ...
 df = add_datetime_features(df, "date", features=["month", "elapsed_months"])  # scoped subset
 df = add_lagged_features(df, "y", [1, 2, 12])        # -> y_lag_1, y_lag_2, y_lag_12
+df = text_features(df, "body")                       # -> body_char_count, _word_count, _avg_word_length
 df = collapse_categories(df, ["zone"], k=15)         # top-15 levels + "other"
 df = one_hot_encode(df, ["category", "zone"])        # indicator columns
 df = ordinal_encode(df, categories={"size": ["S", "M", "L"]})  # ranked codes
@@ -247,6 +249,12 @@ by row position, so sort by the time axis first. Like the datetime features it
 is stateless (safe before a split); to forecast *past* the end of the series,
 where later steps' lags are the model's own predictions, use
 [`forecast_recursive`](#model-dsmodeling).
+
+`text_features` is the text counterpart: a stateless one-call expansion of a
+string column into `<column>_char_count`, `_word_count` and `_avg_word_length` —
+the cheap size/density descriptors that ride beside a text vectorizer. They are
+encoding-independent (unlike [`count_tokens`](#model-dsmodeling), whose value
+depends on the installed extras), so they are safe in front of a fitted model.
 
 `collapse_categories` is the high-cardinality strategy: a column with hundreds
 of levels (the taxi data's ~200 pickup/dropoff zones) keeps its `k` most

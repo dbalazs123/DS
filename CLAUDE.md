@@ -37,7 +37,9 @@ in the **same** change.
 │                          #   adult_income = real-data income classification,
 │                          #   heavily categorical / high-cardinality;
 │                          #   sunspots = real-data autoregressive forecasting,
-│                          #   second forecasting project, non-calendar cycle)
+│                          #   second forecasting project, non-calendar cycle;
+│                          #   bbc_news = real-data multiclass text topic
+│                          #   classification, second text project)
 ├── templates/project/     # copier template for new projects
 ├── notebooks/             # exploratory notebooks
 ├── data/                  # git-ignored: raw/ interim/ processed/
@@ -91,19 +93,20 @@ project — and **P15 served its backlog** (items 27–29): built
 `air_quality` and `adult_income` had hand-rolled) and resolved items 28 (the
 string `"?"` sentinel — a documented one-liner) and 29 (the categorical↔target
 EDA view — parked, no code workaround to promote) without a build. A follow-on
-**goal-alignment pass** then closed two of the standing gaps: the `eda`
+**goal-alignment pass** then closed the three standing gaps: the `eda`
 categorical↔target view (item 29 — `target_rate_by_category` /
-`plot_target_rate`) and forecasting depth (**P16**, the second forecasting
-project `projects/sunspots` on a non-calendar solar cycle, which pulled
+`plot_target_rate`); forecasting depth (**P16**, the second forecasting project
+`projects/sunspots` on a non-calendar solar cycle, which pulled
 `ds.features.add_lagged_features` and
-`ds.modeling.timeseries.forecast_recursive`). The remaining near-term gap is
-**text depth**: a second NLP/text project (beyond `sms_spam`) to fire the parked
-vectorization-step-kind (item 18) and text-feature (item 21) triggers and give
-`count_tokens` a real modeling consumer. Forecasting and NLP/text are
-**committed, in-scope** use cases — the `nlp` extra, `count_tokens`, and
-`ds.modeling.timeseries` / `baseline` / `add_datetime_features` /
-`add_lagged_features` / `forecast_recursive` stay and are grown via demand loops,
-not trimmed. The doc also carries a
+`ds.modeling.timeseries.forecast_recursive`); and text depth (**P17**, the second
+text project `projects/bbc_news`, multiclass topic classification, which pulled
+`ds.features.text_features`, gave `count_tokens` its first robust modeling
+consumer, and reaffirmed the model-side-vectorizer convention — item 18 struck,
+not built). The demand queue is empty again; the next step is an ordinary ninth
+demand loop. Forecasting and NLP/text are **committed, in-scope** use cases — the
+`nlp` extra, `count_tokens`, and `ds.modeling.timeseries` / `baseline` /
+`add_datetime_features` / `add_lagged_features` / `forecast_recursive` /
+`text_features` stay and are grown via demand loops, not trimmed. The doc also carries a
 goal evaluation of the whole toolkit, the friction backlogs from the real-data
 projects, and the settled-decision rationales this file's notes point to. Read
 it before starting new library work — and note its ordering rule: new library

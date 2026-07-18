@@ -7,6 +7,44 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `projects/bbc_news`: ninth **real-data** project (P17 — the second **text**
+  one), a multiclass topic classifier (business/entertainment/politics/sport/tech)
+  over the 2,225 BBC News articles, with the text-feature surface it pulled served
+  in the same demand loop. Chosen after `sms_spam` to stress the text surface a
+  second time and decide the triggers that project parked:
+  - `ds.features.text_features(df, column, *, features=None)` (backlog item 21) —
+    a stateless one-call expansion of a string column into `<column>_char_count`,
+    `_word_count` and `_avg_word_length`, the text counterpart to
+    `add_datetime_features`. `sms_spam` hand-rolled these length features; a
+    second text project reaching for the same family is the trigger item 21
+    recorded, and it decides the *frame helper* shape over single-column
+    counters. Deliberately encoding-independent (pure string ops), which keeps
+    the columns model-safe — unlike `count_tokens`.
+  - `count_tokens` earns its first **modeling** consumer. `sms_spam` kept
+    `token_count` descriptive-only; `bbc_news` puts it in front of the model as
+    one coarse length signal beside thousands of TF-IDF terms, where the
+    classifier is robust to which counting path (BPE/whitespace) runs. The
+    "descriptive-only" verdict is scoped, not contradicted — it governs models
+    *sensitive* to the exact count, and lifts where they are robust; the tests
+    assert path-independent macro-F1 bounds.
+  - Backlog item 18 (a `ds.pipeline` vectorization step kind) re-checked and
+    **struck by reaffirmation**: the TF-IDF vectorizer again lives inside the
+    sklearn `ColumnTransformer` while the `ds` scoring `Pipeline` carries the
+    frame-shaped scale step, confirming the model-side-transform convention P11
+    settled suffices with a second consumer. No step kind is built (it would
+    smuggle a pickle into the strict-JSON `save_params` story).
+
+  Full lifecycle on `ds` + scikit-learn: checksum-verified fetch
+  (`fetch_dataset`'s fourth consumer), boundary validation, verbatim-duplicate
+  drop (99 articles — the diamonds/sms_spam leak guard), the text features,
+  ordinal-coded target, stratified split, a one-step scale plan (`fit_pipeline`),
+  stratified 5-fold macro cross-validation with the plan re-fitted per fold,
+  pipeline + model persisted and the held-out split scored from the reloaded
+  model. Held-out macro-F1 0.964 / accuracy 0.965 vs a length-only model (0.329 —
+  the honest headline that the topic signal is in the words) and the majority
+  class (0.077); CV macro-F1 0.957 ± 0.009. A `ds.features` addition, so the
+  top-level public surface (`tests/test_public_api.py`) is unchanged. `ROADMAP.md`
+  records the P17 plan-of-record entry and the `bbc_news` friction serve.
 - `projects/sunspots`: eighth **real-data** project (P16 — the second
   **forecasting** one), with the autoregressive surface it pulled served in the
   same demand loop. Forecasts the monthly Zurich/SILSO sunspot number, 1749–1983

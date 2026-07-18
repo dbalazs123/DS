@@ -35,6 +35,7 @@ from ds.features import (
     one_hot_encode,
     ordinal_encode,
     scale_features,
+    text_features,
 )
 from ds.preprocessing import (
     ImputeValues,
@@ -437,6 +438,33 @@ def test_add_lagged_features_rejects_bad_lags() -> None:
         add_lagged_features(df, "y", [])
     with pytest.raises(KeyError):
         add_lagged_features(df, "missing", [1])
+
+
+def test_text_features_counts_chars_words_and_word_length() -> None:
+    df = pd.DataFrame({"msg": ["hi there world", "", "one"]})
+    out = text_features(df, "msg")
+    assert list(out["msg_char_count"]) == [14, 0, 3]
+    assert list(out["msg_word_count"]) == [3, 0, 1]
+    # non-space chars / words: (2+5+5)/3 = 4.0; empty -> 0.0; "one" -> 3.0
+    assert out["msg_avg_word_length"].tolist() == pytest.approx([4.0, 0.0, 3.0])
+
+
+def test_text_features_selects_subset_and_is_encoding_independent() -> None:
+    df = pd.DataFrame({"msg": ["café costs £5"]})
+    out = text_features(df, "msg", features=["word_count"])
+    added = [col for col in out.columns if col != "msg"]
+    assert added == ["msg_word_count"]
+    assert out["msg_word_count"].iloc[0] == 3
+
+
+def test_text_features_rejects_bad_input() -> None:
+    df = pd.DataFrame({"msg": ["a b"]})
+    with pytest.raises(ValueError, match="at least one"):
+        text_features(df, "msg", features=[])
+    with pytest.raises(ValueError, match="unknown text features"):
+        text_features(df, "msg", features=["bogus"])  # type: ignore[list-item]
+    with pytest.raises(KeyError):
+        text_features(df, "missing")
 
 
 def test_add_datetime_features_emits_only_the_selected_subset(sample_df: pd.DataFrame) -> None:
