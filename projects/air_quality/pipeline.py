@@ -41,8 +41,6 @@ file and verifies its sha256 before trusting either.
 
 from __future__ import annotations
 
-import hashlib
-import urllib.request
 from pathlib import Path
 
 import matplotlib
@@ -57,7 +55,7 @@ from ds import Settings, get_logger, get_settings, seed_everything
 from ds.eda import missing_value_report, summarize, top_correlations
 from ds.evaluation import compare_models, cross_validate_by_time, regression_metrics
 from ds.features import add_datetime_features, fit_one_hot_categories, fit_scale_params
-from ds.io import load_raw, save_params, save_processed
+from ds.io import fetch_dataset, load_raw, save_params, save_processed
 from ds.modeling.baseline import fit_baseline
 from ds.modeling.persistence import load_model, save_model
 from ds.modeling.tabular import split_features_target
@@ -85,7 +83,7 @@ logger = get_logger(__name__)
 # The UCI archive (dataset 360) is not reachable from every network, so the
 # fetch uses byte-identical GitHub mirrors of the original AirQualityUCI.csv
 # — same semicolons, decimal commas, CRLF line endings and trailing junk —
-# and verifies the checksum below before trusting the download.
+# and ds.io.fetch_dataset verifies the checksum below before trusting either.
 DATA_URLS = (
     "https://raw.githubusercontent.com/shrikumarp/airquality/master/AirQualityUCI.csv",
     "https://raw.githubusercontent.com/asharvi1/UCI-Air-Quality-Data/master/AirQualityUCI.csv",
@@ -142,13 +140,11 @@ HOURS_PER_DAY = 24
 
 
 def fetch_raw(settings: Settings) -> Path:
-    """Download the air-quality CSV into ``settings.raw_dir`` and verify it.
+    """Download the air-quality CSV into ``settings.raw_dir`` and verify its checksum.
 
-    Tries each mirror in :data:`DATA_URLS` in order and checks the download
-    against :data:`RAW_SHA256` — the mirrors are personal repositories, so a
-    silently drifted copy must fail loudly, not parse strangely. A cached
-    copy is re-verified rather than trusted (a partial earlier download would
-    otherwise poison every later run).
+    A thin binding of this project's dataset (mirrors, filename, pinned digest)
+    to :func:`ds.io.fetch_dataset`, which does the multi-mirror download,
+    checksum verification and cache re-verify (ROADMAP item 27's shared dance).
 
     Args:
         settings: Resolves the raw-data directory.
@@ -160,30 +156,7 @@ def fetch_raw(settings: Settings) -> Path:
         ValueError: If no mirror serves a file matching the pinned checksum.
         urllib.error.URLError: If every mirror is unreachable.
     """
-    destination = settings.raw_dir / RAW_NAME
-    if destination.exists():
-        if hashlib.sha256(destination.read_bytes()).hexdigest() == RAW_SHA256:
-            return destination
-        logger.warning("Cached %s fails its checksum; re-downloading", destination)
-        destination.unlink()
-    settings.raw_dir.mkdir(parents=True, exist_ok=True)
-    last_error: Exception | None = None
-    for url in DATA_URLS:
-        logger.info("Downloading %s -> %s", url, destination)
-        try:
-            with urllib.request.urlopen(url) as response:
-                payload = response.read()
-        except OSError as exc:  # URLError subclasses OSError
-            last_error = exc
-            continue
-        if hashlib.sha256(payload).hexdigest() == RAW_SHA256:
-            destination.write_bytes(payload)
-            return destination
-        logger.warning("Mirror %s served a file that fails the pinned checksum", url)
-        last_error = ValueError(f"checksum mismatch from {url}")
-    if isinstance(last_error, ValueError):
-        raise last_error
-    raise urllib.error.URLError(f"no mirror reachable for {RAW_NAME}") from last_error
+    return fetch_dataset(RAW_NAME, DATA_URLS, sha256=RAW_SHA256, settings=settings)
 
 
 def trim_raw(df: pd.DataFrame, expected_rows: int = EXPECTED_ROWS) -> pd.DataFrame:

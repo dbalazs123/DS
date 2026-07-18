@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import urllib.error
 from pathlib import Path
 
 import pandas as pd
@@ -10,7 +12,15 @@ import pytest
 
 from ds.config import Settings
 from ds.features import OneHotCategories, ScaleParams
-from ds.io import load_params, load_raw, load_table, save_params, save_processed, save_table
+from ds.io import (
+    fetch_dataset,
+    load_params,
+    load_raw,
+    load_table,
+    save_params,
+    save_processed,
+    save_table,
+)
 from ds.preprocessing import OutlierBounds
 
 
@@ -102,6 +112,147 @@ def test_load_params_rejects_invalid_json_and_wrong_class(tmp_path: Path) -> Non
     )
     with pytest.raises(ValueError, match="expected a 'ScaleParams' payload"):
         load_params(saved, ScaleParams)
+
+
+# --- fetch_dataset --------------------------------------------------------
+
+
+class _FakeResponse:
+    """Minimal context-manager stand-in for ``urllib.request.urlopen``."""
+
+    def __init__(self, payload: bytes) -> None:
+        self._payload = payload
+
+    def __enter__(self) -> _FakeResponse:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return self._payload
+
+
+def _patch_urlopen(
+    monkeypatch: pytest.MonkeyPatch, responses: dict[str, bytes | Exception]
+) -> list[str]:
+    """Route ``urlopen`` to ``responses`` by URL; record the URLs it was called with.
+
+    A mapped ``Exception`` value is raised (an unreachable mirror); ``bytes`` are
+    served as a fake response. Returns a list the caller can assert against to
+    prove which mirrors were hit (and that a valid cache short-circuits the net).
+    """
+    calls: list[str] = []
+
+    def fake_urlopen(url: str) -> _FakeResponse:
+        calls.append(url)
+        outcome = responses[url]
+        if isinstance(outcome, Exception):
+            raise outcome
+        return _FakeResponse(outcome)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    return calls
+
+
+def _digest(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def test_fetch_dataset_downloads_and_verifies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = Settings(data_dir=tmp_path)
+    payload = b"col\n1\n"
+    url = "https://mirror.example/data.csv"
+    calls = _patch_urlopen(monkeypatch, {url: payload})
+
+    path = fetch_dataset("data.csv", [url], sha256=_digest(payload), settings=settings)
+
+    assert path == settings.raw_dir / "data.csv"
+    assert path.read_bytes() == payload
+    assert calls == [url]
+
+
+def test_fetch_dataset_uses_valid_cache_without_network(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = Settings(data_dir=tmp_path)
+    payload = b"cached\n"
+    settings.raw_dir.mkdir(parents=True)
+    (settings.raw_dir / "data.csv").write_bytes(payload)
+    # Any network call would raise, so returning proves the cache short-circuited.
+    calls = _patch_urlopen(monkeypatch, {})
+
+    path = fetch_dataset(
+        "data.csv", ["https://mirror.example/data.csv"], sha256=_digest(payload), settings=settings
+    )
+
+    assert path.read_bytes() == payload
+    assert calls == []
+
+
+def test_fetch_dataset_reverifies_and_replaces_corrupt_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = Settings(data_dir=tmp_path)
+    good = b"good bytes\n"
+    settings.raw_dir.mkdir(parents=True)
+    (settings.raw_dir / "data.csv").write_bytes(b"partial download")  # wrong checksum
+    url = "https://mirror.example/data.csv"
+    calls = _patch_urlopen(monkeypatch, {url: good})
+
+    path = fetch_dataset("data.csv", [url], sha256=_digest(good), settings=settings)
+
+    assert path.read_bytes() == good  # the poisoned cache was re-downloaded
+    assert calls == [url]
+
+
+def test_fetch_dataset_falls_back_across_mirrors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = Settings(data_dir=tmp_path)
+    payload = b"served by second mirror\n"
+    first, second = "https://down.example/data.csv", "https://up.example/data.csv"
+    calls = _patch_urlopen(
+        monkeypatch, {first: urllib.error.URLError("unreachable"), second: payload}
+    )
+
+    path = fetch_dataset("data.csv", [first, second], sha256=_digest(payload), settings=settings)
+
+    assert path.read_bytes() == payload
+    assert calls == [first, second]  # tried in order, stopped at the first that served
+
+
+def test_fetch_dataset_rejects_wrong_checksum(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = Settings(data_dir=tmp_path)
+    url = "https://mirror.example/data.csv"
+    _patch_urlopen(monkeypatch, {url: b"drifted bytes\n"})
+
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        fetch_dataset("data.csv", [url], sha256=_digest(b"expected bytes\n"), settings=settings)
+    assert not (settings.raw_dir / "data.csv").exists()  # bad bytes never written
+
+
+def test_fetch_dataset_raises_when_all_mirrors_unreachable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = Settings(data_dir=tmp_path)
+    urls = ["https://a.example/d.csv", "https://b.example/d.csv"]
+    _patch_urlopen(monkeypatch, {u: urllib.error.URLError("down") for u in urls})
+
+    with pytest.raises(urllib.error.URLError, match="no mirror reachable"):
+        fetch_dataset("d.csv", urls, sha256=_digest(b"anything"), settings=settings)
+
+
+def test_fetch_dataset_rejects_escaping_name(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    with pytest.raises(ValueError, match="outside"):
+        fetch_dataset(
+            "../escape.csv", ["https://mirror.example/x"], sha256="0" * 64, settings=settings
+        )
 
     # A payload that is not even a mapping fails the same way.
     (tmp_path / "list.json").write_text("[1, 2, 3]")

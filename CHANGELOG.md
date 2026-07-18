@@ -7,6 +7,28 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `ds.io.fetch_dataset(name, urls, *, sha256, settings=None)` (P15 — serving
+  `adult_income` friction item 27): download a raw file into the project's
+  raw-data directory, trying each mirror in order and verifying the payload's
+  SHA-256 against a pinned digest before writing it, so a silently drifted mirror
+  fails loudly rather than parsing strangely downstream. A cached copy is
+  re-verified (not trusted) so a partial earlier download can't poison later runs.
+  The checksum is **required** (keyword-only): the helper exists for the
+  multiple-personal-mirror case where pinning the exact bytes is the whole point,
+  and the seaborn-mirror projects' plain un-pinned "download if absent" stays
+  inline (below the aliasing bar) rather than being folded in. Stdlib only
+  (`urllib`/`hashlib`), so no dependency was added; a `ds.io` addition, so the
+  top-level public surface (`tests/test_public_api.py`) is unchanged. `air_quality`
+  and `adult_income` — the two projects that had hand-rolled the ~25-line
+  multi-mirror/checksum/cache-reverify dance verbatim (the trigger `air_quality`
+  recorded) — both deleted that body for a one-line binding to `fetch_dataset`,
+  with their end-to-end tests passing unchanged (held-out metrics and persisted
+  artifacts equivalent). ROADMAP records the P15 plan-of-record entry and strikes
+  friction items 27 (served), 28 (the string `"?"` sentinel stays a documented
+  one-liner now that two differently-typed sentinels are on record — a third
+  would force a thin helper) and 29 (the categorical↔target EDA view struck and
+  parked, no code workaround to promote), with "Next up" set to the eighth demand
+  loop; CLAUDE.md gains an engineering note on the verified-fetch helper.
 - `projects/adult_income`: seventh **real-data** project (P14 — the seventh run
   of the demand loop, and the first **heavily-categorical** one). Predicts
   whether a 1994 US census respondent earns over $50K from the 32,560-row
