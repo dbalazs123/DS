@@ -26,10 +26,11 @@ the `fit_*`/`apply_*` pairs, fitted in one call from a `FitStep` plan via
 `fit_pipeline`), `ds` CLI (`ds version`, `ds new`, `ds run`), a
 per-stage docs Guide with cross-stage recipes, a `test-extras` CI job,
 single-sourced version, and an extended project template. `projects/` holds the
-synthetic worked example (`_example`) and five **real-data** projects:
+synthetic worked example (`_example`) and six **real-data** projects:
 `nyc_taxis` (regression), `titanic` (binary classification), `flights`
-(forecasting), `diamonds` (multiclass classification) and `sms_spam` (text /
-binary spam classification).
+(forecasting), `diamonds` (multiclass classification), `sms_spam` (text /
+binary spam classification) and `air_quality` (sensor gap-filling regression
+on an hourly time axis).
 
 ## Goal evaluation (2026-07)
 
@@ -43,9 +44,10 @@ extending recent momentum. Verdicts, and what they imply:
   library work") had never run, while eight consecutive PRs invested in
   supply-side library polish. **Consequence:** every library addition should
   now be pulled by a project need, not pushed from a candidate list. The
-  friction backlogs below are the queue (all five lists — `nyc_taxis`,
+  friction backlogs below are the queue (the first five lists — `nyc_taxis`,
   `titanic`, `flights`, `diamonds` and `sms_spam` — are fully dispatched;
-  P11 emptied the queue, so the next step is a sixth demand loop).
+  P12 ran the sixth demand loop, and the `air_quality` list is the open
+  queue).
 - **Fit-once / score-later** — *stopped one step short of its own goal;
   since closed (P2).* Fitted parameters and the `Pipeline` persist as strict
   JSON, but at evaluation time the fitted **model** could not be persisted at
@@ -281,16 +283,47 @@ orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
     **struck, not built** (see the backlog); both second-project triggers
     recorded.
 
-**Next up:** the `sms_spam` backlog is fully dispatched (one built, one
-documented, two struck) and the queue is empty again — the next step is a
-**sixth demand loop**: a new real-data project chosen by the P8 rule (grep
-which surfaces still lack a real consumer — imputation beyond titanic's
-severity and the item-13/15/20/21 second-project triggers are the open
-watch-list) to regenerate the backlog. Item 9's parked question —
-`cross_validate_by_time(make_pipeline=...)` — stays parked: the trigger has
-still not fired (sms_spam's CV is k-fold, not rolling-origin).
-Deprioritized until a project pulls them: more EDA helpers, more cookbook
-recipes, more CLI.
+- **P12 — regenerate demand with a sixth real-data project (gap-filling on
+  a gapped hourly axis): DONE.** `projects/air_quality` reconstructs the
+  reference CO analyzer's reading (`co_gt`, mg/m³) from the rest of a
+  road-level monitoring station — the UCI Air Quality dataset, 9,357 hourly
+  rows from an Italian city, March 2004 to April 2005; the analyzer was down
+  for 18% of those hours, and back-filling such an outage from the
+  co-located instruments is the task. Chosen by the P8 rule after grepping
+  which surfaces still had no real consumer, and deliberately weighted
+  toward the open watch-list: real missingness at last (−200 sentinels:
+  one column 90.2% missing, the target 18.0%, the NOx/NO2 feature channels
+  17.5% overall and ~5% within the labeled rows), a raw file whose parse
+  fails silently (semicolons, decimal commas, trailing junk columns and 114
+  all-empty trailing rows), a two-piece dotted-time axis, and a
+  rolling-origin CV whose per-fold fitted state genuinely varies. First
+  real consumers earned: `assert_dtypes` (the parse pin that makes the
+  decimal-comma misparse loud — with `sep=";"` alone every measurement
+  column arrives as strings) and the impute surface at real severity
+  (median fills through the persisted pipeline over genuinely cell-level
+  gaps — nyc_taxis/titanic exercised the pair, but never against an
+  independent-outage structure). Full lifecycle on `ds` + scikit-learn:
+  checksum-verified fetch (the UCI archive is not reachable from every
+  network, so two byte-identical GitHub mirrors are pinned by sha256),
+  expected-row-count check, three-way missingness triage driven by
+  `missing_value_report` (drop the 90% column; drop 366 device-offline
+  hours — the device's gaps are all-or-nothing, so there is nothing to
+  predict from; drop 1,647 unlabeled hours), hand-assembled hourly time
+  axis, a three-step fit plan (median impute / 24-level hour one-hot /
+  standardize) fitted on the training window, rolling-origin CV (MAE
+  0.406 ± 0.111) with a companion table measuring the per-fold fitted state
+  the single up-front transform cannot re-fit, pipeline + model persisted
+  and the held-out window scored from reloaded state. Held-out (last ~20%
+  of labeled hours): MAE 0.305 / RMSE 0.458 / r² 0.876 vs the station's own
+  same-hour-yesterday reading (MAE 0.799, r² 0.223) and the training mean
+  (MAE 1.068, r² −0.030). Per the demand-first rule the project promotes
+  nothing itself; its friction list is the new backlog below.
+
+**Next up:** serve the `air_quality` backlog — items 22–26 below, in
+observed-pain order. Item 22 (`cross_validate_by_time(make_pipeline=...)`)
+is the headline: item 9's parked question finally has the consumer it was
+waiting for. Deprioritized until a project pulls them: more EDA helpers,
+more cookbook recipes, more CLI.
 
 ## Friction backlog (from `projects/nyc_taxis`)
 
@@ -652,6 +685,156 @@ int-coded target (item 6's numeric-label scoping held again);
 persistence story for what the vocabulary *can* express (`fit_pipeline` →
 `save_params`/`load_params`, `save_model`/`load_model` for the sklearn
 side).
+
+## Friction backlog (from `projects/air_quality`)
+
+The sixth run of the demand loop — the first against instrument-outage
+missingness and a gapped hourly axis. Numbering continues from the
+`sms_spam` list; in observed-pain order:
+
+22. **`cross_validate_by_time` cannot re-fit the transform chain per fold —
+    item 9's parked trigger finally fired.** The recorded condition was "a
+    rolling-origin consumer whose per-fold fitted state genuinely varies",
+    and this is it: the plan's impute medians and scale parameters are
+    learned from windows whose missingness and levels drift with the
+    seasons, and the per-fold measurement (persisted as
+    `cv_fold_fit_state.csv`) shows the would-be state moving fold to fold —
+    the `nox_gt` impute median spans 115–147 (a 28% swing), the
+    `pt08_s1_co` scale centre 1097–1203. The project does what titanic did
+    before item 9: transforms the training frame *once* with the
+    training-run pipeline and cross-validates that, a leak in protocol
+    recorded rather than hidden. Candidate shape, and the recorded
+    strongest: the `make_pipeline` factory parameter
+    `cross_validate_kfold` already has — the same `FitStep`-plan mechanism,
+    re-fitted per fold on the fold's training window only. Sub-observation
+    for whoever serves it: measuring the per-fold state meant *reproducing
+    the fold boundaries by hand* (the `divmod` block-cutting copied from
+    the library source), because the function exposes per-fold sizes but
+    not the windows themselves; a `make_pipeline` parameter dissolves that
+    need, so it should not become its own item.
+23. **`fit_baseline`'s positional contract cannot align on a gapped time
+    axis.** The honest seasonal reference here is "the station's reading 24
+    hours earlier" — but with the unlabeled and offline hours dropped,
+    position `i − 24` is usually *not* the same hour yesterday, so
+    `strategy="seasonal_naive"` would be scored on a misalignment. (Flights
+    never hit this: its axis was complete, and the backlog note there —
+    "positional alignment is correct by construction when the scored window
+    starts right after training" — quietly assumed completeness.) The
+    project hand-rolls a time-indexed lookup
+    (`same_hour_yesterday_reference`: index the labeled series by
+    timestamp, shift the wanted timestamps by −24 h, fall back to the
+    training mean where the lag hour is also unlabeled). Candidate shapes:
+    a time-aware variant of the naive strategies (take a time column and a
+    period *duration*, align by index rather than position), or a
+    documented convention that positional baselines require a complete
+    axis. Caveat: first observation of the gapped-axis case — one
+    consumer's evidence, the same bar every helper here has had to clear.
+24. **The time axis was assembled by hand — item 13's second-project
+    trigger fired.** `build_time_axis` repeats flights' dance move for
+    move on different raw material: concatenate the pieces (`date` +
+    dotted `time` strings here; `year` + month-name there), parse with an
+    explicit `pd.to_datetime(format=...)`, raise on duplicates, sort, drop
+    the parts. The shape question item 13 left open now has two data
+    points, and they agree: what recurs is *parse-with-format + uniqueness
+    check + chronological sort*, not two-column splits or format-string
+    inference. Candidate shape: one helper taking the assembled string
+    series (the caller concatenates — that part is trivially
+    project-specific), a required explicit `format=`, and the uniqueness
+    raise; sorting stays with the caller (flights sorts the frame,
+    air_quality sorts and drops). Bar note, honest both ways: each copy is
+    still only ~6 lines of well-documented pandas, but the uniqueness
+    check is the part both projects independently judged load-bearing and
+    is exactly what raw `to_datetime` doesn't do.
+25. **A silently-wrong boundary parse had to be caught by an
+    expected-shape check — item 20's second-project trigger fired.**
+    The raw file's 114 all-empty trailing rows survive a plausible read
+    (`sep=";"` parses them as rows of NaN), so a frame can look healthy
+    while being 114 rows too long; only `len(df) == 9357` against the
+    published dataset size catches it — structurally the same save as
+    sms_spam's two-quote-swallowed-rows check. The shape question item 20
+    left open also now has two agreeing data points: both are *row-count
+    asserts against a published size*, neither needed a general
+    expected-shape check. Candidate shape: `assert_row_count(df, expected)`
+    in `ds.validation`, matching the stage's fluent-guard convention.
+    Bar note: the comparison is one line; what a helper adds is the
+    stage-consistent error type (`DataValidationError`, so boundary checks
+    fail uniformly) rather than saved code.
+26. **Sentinel-coded missingness is invisible until hand-converted.** The
+    file tags every gap as −200 — a legal-looking float — so before the
+    hand-rolled `replace(-200.0, nan)` *nothing* in the library can even
+    see the problem: `missing_value_report` reports zero missing while 90%
+    of a column is fake, `assert_in_range` is unsatisfiable, and
+    `summarize` averages sentinels into every statistic. The read-time
+    idiom (`load_raw(..., na_values=...)` forwarding to pandas) looks like
+    the library-free answer but hides a trap this file actually springs:
+    the sentinel is spelled `-200` in the integer-formatted columns and
+    `-200,0` in the decimal-comma ones (457 occurrences), so
+    `na_values=["-200"]` silently misses a fifth of the gap kinds — the
+    post-parse numeric replace is the robust move precisely because it
+    runs after decimal conversion. Candidate shapes: a
+    `mask_sentinels(df, values, columns=)` preprocessing helper, or a
+    documented gotcha in the Guide's acquire section (the item-17/18
+    precedent). Caveat: the replace is one line observed once; the
+    invisibility interaction (validation and EDA both blind until it
+    runs, so ordering is load-bearing) is what elevates it above a plain
+    aliasing helper.
+
+Notes from the same run, for the record:
+
+- **The imputation coverage gap is closed as *exercised*, not changed.**
+  Recorded twice ("stays unexercised at severity beyond titanic"), the gap
+  is now served: median fills fitted on the training window flow through
+  the persisted pipeline over genuinely cell-level, independent-outage gaps
+  (~5% of `nox_gt`/`no2_gt` within the labeled rows), and the pair
+  composed without friction. The *severity* lesson was structural, though:
+  most of this dataset's missingness was never imputation's to solve —
+  90% missing means drop the column, all-channels-offline means drop the
+  row, and a missing *target* means the row is the deployment condition,
+  not training data. The report → triage → impute-the-remainder sequence
+  is the real pattern, and `missing_value_report` carried it.
+- **Item 15's trigger did not fire as recorded, but the row-mask family
+  recurred.** No out-of-range mask was hand-rolled (the range checks all
+  pass post-sentinel). But this is the third project to hand-roll
+  row-dropping masks — diamonds' range mask, now an all-channels-null mask
+  and a null-target mask — with a *different* shape each time, which is
+  itself evidence: the recurring need is "drop rows failing a
+  project-specific predicate", which `df.loc[mask]` already spells as
+  clearly as any helper could. Stays parked, with the shape question now
+  leaning "no helper".
+- **Item 21's trigger did not fire** — no text columns, nothing
+  hand-rolled from the text-features family. Stays parked.
+- **Checksum-pinned fetch, a note not an item:** with the UCI archive
+  unreachable from some networks, the fetch pins two byte-identical
+  personal-repo mirrors and verifies sha256 before trusting either
+  (including the cached copy — a partial earlier download must not poison
+  later runs). Hand-rolled ~10 lines, first project to need it; if a
+  second mirror-fetched project repeats the dance, that is the trigger for
+  a fetch helper — recorded so the next session doesn't re-derive it.
+- **The P9-fixed template held up again.** `ds new "Air Quality"`
+  scaffolded the injectable-`settings` shape this pipeline kept; only the
+  placeholder stage comments and skeleton tests were replaced.
+
+Where the library did *not* fight: `assert_dtypes`' first real consumer is
+the star — the decimal-comma misparse is exactly the silent failure a dtype
+pin exists for, and it composed as one dict comprehension;
+`load_raw`'s kwargs forwarding took `sep=";", decimal=","` without a
+project-local loader (second consumer, the sms_spam path);
+`missing_value_report`/`plot_missingness` carried the whole triage at real
+severity; `fit_impute_values`/`apply_impute_missing` through
+`fit_pipeline`'s three-step plan (impute → one-hot → scale, order
+load-bearing and honored); `fit_one_hot_categories` on an *integer* hour
+column, including the strict-JSON round-trip of int categories through the
+persisted pipeline; `add_datetime_features(features=["hour", "is_weekend",
+"elapsed_months"])` — the explicit-selection shape (item 11) at its third
+consumer and the elapsed-months trend (item 12) at its second, as the
+sensor-drift term; `train_test_split_by_time` (third consumer);
+`cross_validate_by_time` itself, within its no-refit contract;
+`fit_baseline("mean")` as the no-information floor;
+`regression_metrics`/`compare_models`/`plot_model_comparison`/
+`plot_residuals`; `plot_series` on an hourly window with a prediction
+overlay; and the whole persistence story (`fit_pipeline` →
+`save_params`/`load_params`, `save_model`/`load_model`, held-out window
+scored from reloaded state only).
 
 Kept for the record — CLAUDE.md's engineering notes point here. Each was
 re-checked in the 2026-07 evaluation; verdicts inline.

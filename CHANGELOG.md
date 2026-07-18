@@ -7,6 +7,36 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `projects/air_quality`: sixth **real-data** project (P12 — the sixth run of
+  the demand loop, and the first against real instrument-outage missingness
+  on a gapped hourly axis). Reconstructs the reference CO analyzer's reading
+  (`co_gt`, mg/m³) from the rest of a road-level monitoring station on the
+  UCI Air Quality dataset (9,357 hourly rows, an Italian city, March 2004 to
+  April 2005; downloaded once into git-ignored `data/raw/` from two
+  byte-identical GitHub mirrors, verified by pinned sha256 because the UCI
+  archive is not reachable from every network). Chosen — by the established
+  rule of grepping which surfaces still had no real consumer, weighted toward
+  the open watch-list — for its real missingness (−200 sentinels: one column
+  90.2% missing, the target 18.0%, the NOx/NO2 feature channels independently
+  gapped), its silently-failing parse (semicolons + decimal commas + trailing
+  junk), and a rolling-origin CV whose per-fold fitted state genuinely varies.
+  First real consumers earned: `assert_dtypes` (the parse pin that makes the
+  decimal-comma misparse loud) and the impute surface at real severity
+  (`fit_impute_values`/`apply_impute_missing` through `fit_pipeline` over
+  genuinely cell-level gaps). Full lifecycle on `ds` + scikit-learn:
+  checksum-verified fetch, expected-row-count check, a three-way missingness
+  triage (drop the 90% column, drop 366 device-offline hours, drop 1,647
+  unlabeled hours, impute the partial remainder), hand-assembled hourly time
+  axis, a three-step fit plan (median impute / 24-level hour one-hot /
+  standardize), rolling-origin CV with a companion table measuring the
+  per-fold fitted state the single up-front transform cannot re-fit, pipeline
+  + model persisted and the held-out window scored from reloaded state.
+  Held-out: MAE 0.305 / RMSE 0.458 / r² 0.876 vs the same-hour-yesterday
+  reading (MAE 0.799, r² 0.223) and the training mean (MAE 1.068, r² −0.030);
+  rolling-origin CV MAE 0.406 ± 0.111. Per the demand-first rule the project
+  promotes nothing itself; its friction list is `ROADMAP.md` items 22–26, and
+  item 22 finally fires item 9's parked `cross_validate_by_time(make_pipeline=...)`
+  trigger.
 - The `sms_spam` friction backlog served (P11 — `ROADMAP.md` items 18–21 in
   observed-pain order: one built, one resolved by documentation, two struck;
   the served item dogfooded by `projects/sms_spam` in the same change):
