@@ -1,0 +1,80 @@
+name: Deps upgrade
+
+# Weekly (and on-demand) `uv lock --upgrade`, opened as a reviewable PR. This is
+# the deliberate replacement for a dependabot pip stream: dependabot cannot
+# regenerate uv.lock, and CI enforces `uv sync --locked`, so Python-dep bumps are
+# driven from the lockfile here instead (see .github/dependabot.yml). Floors in
+# pyproject.toml are untouched — only the resolved lock moves to newest-compatible.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC (matches the old dependabot cadence)
+  workflow_dispatch: # manual runs from the Actions tab
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: uv-lock-upgrade
+  cancel-in-progress: true
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Upgrade the lockfile
+        run: uv lock --upgrade
+
+      - name: Detect whether the lock changed
+        id: diff
+        run: |
+          if git diff --quiet -- uv.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "uv.lock is already up to date; nothing to open."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Run exactly what CI runs, against the upgraded lock, and record the
+      # result for the PR body. A PR opened by GITHUB_TOKEN does not trigger the
+      # on: pull_request CI (see release.yml), so this inline check is how the
+      # upgrade is vetted. continue-on-error keeps a red upgrade visible as a PR
+      # rather than a failed job — a breaking major bump is exactly what a
+      # maintainer wants to see.
+      - name: Check the upgrade (lint + typecheck + tests)
+        if: steps.diff.outputs.changed == 'true'
+        id: check
+        continue-on-error: true
+        run: |
+          uv sync --locked --extra all
+          make check
+
+      - name: Open or update the upgrade PR
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: automated/uv-lock-upgrade
+          delete-branch: true
+          add-paths: uv.lock
+          commit-message: "chore(deps): weekly uv lock upgrade"
+          title: "chore(deps): weekly uv lock upgrade"
+          body: |
+            Automated `uv lock --upgrade` — the resolved lockfile moved to the
+            newest versions still satisfying the `pyproject.toml` floors (the
+            floors themselves are unchanged).
+
+            **Inline check (`make check` on the upgraded lock): `${{ steps.check.outcome }}`.**
+            A `failure` here usually means an upgraded major (pandas / numpy /
+            mypy / ruff) needs code changes — inspect the run, then take this PR
+            whole, cherry-pick from it, or close it.
+
+            Note: the repo's normal CI does not run on this PR automatically
+            (it was opened by `GITHUB_TOKEN`); it runs on merge to `master`. The
+            inline check above is the pre-merge signal.

@@ -129,7 +129,13 @@ Things that cost a round-trip to discover; save yourself the CI failure:
   re-resolves). Bump Python deps deliberately with `uv lock --upgrade`.
   Dependabot is scoped to **GitHub Actions only** (`.github/dependabot.yml`): it
   can't regenerate a uv lockfile, so a pip PR would be un-mergeable against the
-  `--locked` gate — that's why Python-dep bumps are a manual `uv lock` step.
+  `--locked` gate — that's why Python-dep bumps are a manual `uv lock` step. A
+  weekly `deps-upgrade` workflow (`.github/workflows/deps-upgrade.yml`,
+  also `workflow_dispatch`-triggerable) automates the *visibility*: it runs
+  `uv lock --upgrade` and, if the lock moved, opens a single PR carrying the
+  refreshed lock plus the result of an inline `make check` against it. A **red**
+  check there is expected on breaking majors (pandas 3 / numpy 2 / mypy 2) and is
+  the signal, not a bug — review and merge/cherry-pick/close by hand.
 - **Public-API convention (settled — import by stage):** stage functions are
   imported by stage (`from ds.eda import ...`), and `ds.pipeline.Pipeline` /
   `PipelineStep` likewise from `ds.pipeline`; only the stage-independent
