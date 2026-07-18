@@ -191,11 +191,23 @@ train/test split. For split-safe cleaning see
 ### Explore — `ds.eda`
 
 ```python
-from ds.eda import missing_value_report, summarize, top_correlations
+from ds.eda import (
+    missing_value_report,
+    summarize,
+    target_rate_by_category,
+    top_correlations,
+)
 
 summarize(df)              # per-column dtype, null counts, cardinality, stats
 missing_value_report(df)   # just the columns with gaps, worst first
 top_correlations(df, n=5)  # most correlated numeric pairs (redundancy / leakage)
+
+# top_correlations sees only numeric columns; target_rate_by_category is the
+# categorical read on the target — the mean target per level, ranked, with the
+# overall mean as a baseline. Descriptive only: a target rate fed back as a
+# feature is textbook leakage, so compute it on the training split when it
+# informs a modeling decision.
+target_rate_by_category(df, "occupation", "is_high_earner")
 ```
 
 ### Feature — `ds.features`
@@ -203,15 +215,19 @@ top_correlations(df, n=5)  # most correlated numeric pairs (redundancy / leakage
 ```python
 from ds.features import (
     add_datetime_features,
+    add_lagged_features,
     bin_column,
     collapse_categories,
     one_hot_encode,
     ordinal_encode,
     scale_features,
+    text_features,
 )
 
 df = add_datetime_features(df, "date")               # year, month, dayofweek, hour, ...
 df = add_datetime_features(df, "date", features=["month", "elapsed_months"])  # scoped subset
+df = add_lagged_features(df, "y", [1, 2, 12])        # -> y_lag_1, y_lag_2, y_lag_12
+df = text_features(df, "body")                       # -> body_char_count, _word_count, _avg_word_length
 df = collapse_categories(df, ["zone"], k=15)         # top-15 levels + "other"
 df = one_hot_encode(df, ["category", "zone"])        # indicator columns
 df = ordinal_encode(df, categories={"size": ["S", "M", "L"]})  # ranked codes
@@ -225,6 +241,20 @@ series `_dayofweek`/`_is_weekend` would just encode the weekday each month's
 first day lands on). The opt-in `"elapsed_months"` feature is the trend term
 a linear forecaster needs: a monotone count of whole months since a fixed
 calendar epoch, so scoring later rows involves no learned origin.
+
+`add_lagged_features` is the autoregressive counterpart, for a series whose
+signal is its own recent history rather than its calendar position (momentum, a
+cycle no month captures): it adds `<column>_lag_<k>` columns for each lag, taken
+by row position, so sort by the time axis first. Like the datetime features it
+is stateless (safe before a split); to forecast *past* the end of the series,
+where later steps' lags are the model's own predictions, use
+[`forecast_recursive`](#model-dsmodeling).
+
+`text_features` is the text counterpart: a stateless one-call expansion of a
+string column into `<column>_char_count`, `_word_count` and `_avg_word_length` —
+the cheap size/density descriptors that ride beside a text vectorizer. They are
+encoding-independent (unlike [`count_tokens`](#model-dsmodeling), whose value
+depends on the installed extras), so they are safe in front of a fitted model.
 
 `collapse_categories` is the high-cardinality strategy: a column with hundreds
 of levels (the taxi data's ~200 pickup/dropoff zones) keeps its `k` most
@@ -439,6 +469,24 @@ For classification the same call takes `strategy="majority"` — predict the
 modal training label (numeric, e.g. an int-coded 0/1 target), the reference
 every classifier must beat.
 
+For a series predicted from its own history — a model fitted on
+[`add_lagged_features`](#feature-dsfeatures) columns — one-step-ahead scoring is
+a plain `model.predict` (each row reads the true recent values). Forecasting
+*further* than one step, past the edge of the data, needs `forecast_recursive`:
+it feeds each prediction back as the lags of later steps, so `lags` must match
+the offsets the model was trained on, in order.
+
+```python
+from ds.modeling.timeseries import forecast_recursive
+
+# model trained on y_lag_1, y_lag_2, y_lag_12; forecast 12 steps past `history`
+forecast = forecast_recursive(model, history, lags=[1, 2, 12], steps=12)
+```
+
+Error compounds with the horizon, so a long recursive forecast of a noisy
+series decays toward its mean — expected, not a bug; hold out a realistic
+horizon and compare against the naive references.
+
 Once an estimator is fitted, persist it so a later run (or another process)
 scores without refitting — the model-side counterpart to
 `save_params`/`load_params`:
@@ -594,12 +642,14 @@ from ds.viz import (
     plot_outliers,
     plot_residuals,
     plot_series,
+    plot_target_rate,
     set_theme,
 )
 
 set_theme("notebook")                    # consistent matplotlib theme + palette
 plot_missingness(df)                     # bar chart of missing fractions
 plot_outliers(df)                        # bar chart of outlier counts per column
+plot_target_rate(df, "occupation", "y")  # per-level target rate, baseline line
 plot_confusion_matrix(y_true, y_pred)    # annotated heatmap (labels= names the ticks)
 plot_residuals(y_true, y_pred)           # residual-vs-predicted diagnostic
 plot_model_comparison(comparison)        # one metric across models, as bars
@@ -610,6 +660,7 @@ Each plot returns a matplotlib `Axes` and accepts an existing `ax=`, so they
 compose into multi-panel figures. They pair with the `ds.eda`,
 `ds.preprocessing` and `ds.evaluation` helpers (`plot_missingness` visualizes
 `missing_value_report`, `plot_outliers` visualizes `flag_outliers`,
+`plot_target_rate` visualizes `target_rate_by_category`,
 `plot_confusion_matrix` visualizes `confusion_frame`, and
 `plot_model_comparison` visualizes `compare_models`).
 

@@ -18,6 +18,7 @@ from ds.viz import (
     plot_outliers,
     plot_residuals,
     plot_series,
+    plot_target_rate,
 )
 
 
@@ -109,6 +110,22 @@ def test_plot_series_rejects_misaligned_lengths() -> None:
         plot_series([1, 2, 3], [1.0, 2.0])
     with pytest.raises(ValueError, match="predictions\\['model'\\]"):
         plot_series([1, 2], [1.0, 2.0], predictions={"model": [1.0]})
+
+
+def test_plot_target_rate_bars_each_level_with_a_baseline_line() -> None:
+    df = pd.DataFrame(
+        {
+            "grp": ["a", "a", "b", "b"],
+            "y": [1, 1, 0, 1],  # a: 1.0, b: 0.5, baseline 0.75
+        }
+    )
+    ax = plot_target_rate(df, "grp", "y")
+    assert len(ax.patches) == 2  # one bar per level
+    assert [label.get_text() for label in ax.get_yticklabels()] == ["a", "b"]
+    # The dashed baseline reference line is drawn and legended.
+    legend = ax.get_legend()
+    assert legend is not None
+    assert "baseline" in {text.get_text() for text in legend.get_texts()}
 
 
 def test_plots_accept_an_existing_axes() -> None:

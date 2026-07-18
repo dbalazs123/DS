@@ -9,13 +9,19 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ds.eda import missing_value_report, summarize, top_correlations
+from ds.eda import (
+    missing_value_report,
+    summarize,
+    target_rate_by_category,
+    top_correlations,
+)
 from ds.features import (
     OneHotCategories,
     OrdinalCategories,
     ScaleParams,
     TopKCategories,
     add_datetime_features,
+    add_lagged_features,
     apply_collapse_categories,
     apply_one_hot_encode,
     apply_ordinal_encode,
@@ -29,6 +35,7 @@ from ds.features import (
     one_hot_encode,
     ordinal_encode,
     scale_features,
+    text_features,
 )
 from ds.preprocessing import (
     ImputeValues,
@@ -342,6 +349,52 @@ def test_top_correlations_handles_too_few_numeric_columns() -> None:
     assert list(out.columns) == ["feature_a", "feature_b", "correlation"]
 
 
+def test_target_rate_by_category_ranks_levels_by_target_mean() -> None:
+    df = pd.DataFrame(
+        {
+            "grp": ["a", "a", "a", "a", "b", "b", "b", "b"],
+            "y": [1, 1, 1, 0, 0, 0, 0, 1],  # a: 0.75 positive, b: 0.25
+        }
+    )
+    out = target_rate_by_category(df, "grp", "y")
+    assert list(out.index) == ["a", "b"]  # highest target_rate first
+    assert out.index.name == "grp"
+    assert list(out.columns) == ["count", "frac", "target_rate", "baseline"]
+    assert out.loc["a", "target_rate"] == pytest.approx(0.75)
+    assert out.loc["b", "target_rate"] == pytest.approx(0.25)
+    assert out.loc["a", "count"] == 4
+    assert out.loc["a", "frac"] == pytest.approx(0.5)
+    # baseline is the overall target mean, constant across levels.
+    assert out["baseline"].nunique() == 1
+    assert out.loc["a", "baseline"] == pytest.approx(0.5)
+
+
+def test_target_rate_by_category_reports_missing_as_its_own_level() -> None:
+    df = pd.DataFrame({"grp": ["a", "a", None, None], "y": [1, 0, 1, 1]})
+    out = target_rate_by_category(df, "grp", "y")
+    # The NaN level is kept (target rate 1.0), not dropped like a groupby default.
+    assert out["count"].sum() == 4
+    assert out["target_rate"].max() == pytest.approx(1.0)
+
+
+def test_target_rate_by_category_drops_sparse_levels_below_min_count() -> None:
+    df = pd.DataFrame({"grp": ["a", "a", "a", "rare"], "y": [1, 0, 1, 1]})
+    out = target_rate_by_category(df, "grp", "y", min_count=2)
+    assert list(out.index) == ["a"]
+
+
+def test_target_rate_by_category_rejects_non_numeric_target() -> None:
+    df = pd.DataFrame({"grp": ["a", "b"], "y": ["x", "y"]})
+    with pytest.raises(ValueError, match="numeric"):
+        target_rate_by_category(df, "grp", "y")
+
+
+def test_target_rate_by_category_rejects_unknown_columns() -> None:
+    df = pd.DataFrame({"grp": ["a", "b"], "y": [1, 0]})
+    with pytest.raises(KeyError):
+        target_rate_by_category(df, "missing", "y")
+
+
 def test_add_datetime_features(sample_df: pd.DataFrame) -> None:
     out = add_datetime_features(sample_df, "Date")
     assert out["Date_year"].iloc[0] == 2024
@@ -356,6 +409,62 @@ def test_add_datetime_features(sample_df: pd.DataFrame) -> None:
 def test_add_datetime_features_missing_column(sample_df: pd.DataFrame) -> None:
     with pytest.raises(KeyError):
         add_datetime_features(sample_df, "nope")
+
+
+def test_add_lagged_features_shifts_by_row_position() -> None:
+    df = pd.DataFrame({"y": [10, 20, 30, 40, 50]})
+    out = add_lagged_features(df, "y", [1, 2])
+    # max lag is 2, so the first two warm-up rows are dropped and the index reset.
+    assert list(out["y"]) == [30, 40, 50]
+    assert list(out["y_lag_1"]) == [20, 30, 40]
+    assert list(out["y_lag_2"]) == [10, 20, 30]
+    assert list(out.index) == [0, 1, 2]
+
+
+def test_add_lagged_features_orders_columns_ascending_and_keeps_warmup_when_asked() -> None:
+    df = pd.DataFrame({"y": [1, 2, 3, 4]})
+    out = add_lagged_features(df, "y", [3, 1], dropna=False)
+    added = [col for col in out.columns if col != "y"]
+    assert added == ["y_lag_1", "y_lag_3"]  # ascending, regardless of request order
+    assert len(out) == 4  # warm-up rows kept
+    assert bool(pd.isna(out["y_lag_1"].iloc[0]))
+
+
+def test_add_lagged_features_rejects_bad_lags() -> None:
+    df = pd.DataFrame({"y": [1, 2, 3]})
+    with pytest.raises(ValueError, match="positive"):
+        add_lagged_features(df, "y", [0])
+    with pytest.raises(ValueError, match="at least one"):
+        add_lagged_features(df, "y", [])
+    with pytest.raises(KeyError):
+        add_lagged_features(df, "missing", [1])
+
+
+def test_text_features_counts_chars_words_and_word_length() -> None:
+    df = pd.DataFrame({"msg": ["hi there world", "", "one"]})
+    out = text_features(df, "msg")
+    assert list(out["msg_char_count"]) == [14, 0, 3]
+    assert list(out["msg_word_count"]) == [3, 0, 1]
+    # non-space chars / words: (2+5+5)/3 = 4.0; empty -> 0.0; "one" -> 3.0
+    assert out["msg_avg_word_length"].tolist() == pytest.approx([4.0, 0.0, 3.0])
+
+
+def test_text_features_selects_subset_and_is_encoding_independent() -> None:
+    df = pd.DataFrame({"msg": ["café costs £5"]})
+    out = text_features(df, "msg", features=["word_count"])
+    added = [col for col in out.columns if col != "msg"]
+    assert added == ["msg_word_count"]
+    assert out["msg_word_count"].iloc[0] == 3
+
+
+def test_text_features_rejects_bad_input() -> None:
+    df = pd.DataFrame({"msg": ["a b"]})
+    with pytest.raises(ValueError, match="at least one"):
+        text_features(df, "msg", features=[])
+    with pytest.raises(ValueError, match="unknown text features"):
+        text_features(df, "msg", features=["bogus"])  # type: ignore[list-item]
+    with pytest.raises(KeyError):
+        text_features(df, "missing")
 
 
 def test_add_datetime_features_emits_only_the_selected_subset(sample_df: pd.DataFrame) -> None:

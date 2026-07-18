@@ -6,6 +6,103 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `projects/bbc_news`: ninth **real-data** project (P17 — the second **text**
+  one), a multiclass topic classifier (business/entertainment/politics/sport/tech)
+  over the 2,225 BBC News articles, with the text-feature surface it pulled served
+  in the same demand loop. Chosen after `sms_spam` to stress the text surface a
+  second time and decide the triggers that project parked:
+  - `ds.features.text_features(df, column, *, features=None)` (backlog item 21) —
+    a stateless one-call expansion of a string column into `<column>_char_count`,
+    `_word_count` and `_avg_word_length`, the text counterpart to
+    `add_datetime_features`. `sms_spam` hand-rolled these length features; a
+    second text project reaching for the same family is the trigger item 21
+    recorded, and it decides the *frame helper* shape over single-column
+    counters. Deliberately encoding-independent (pure string ops), which keeps
+    the columns model-safe — unlike `count_tokens`.
+  - `count_tokens` earns its first **modeling** consumer. `sms_spam` kept
+    `token_count` descriptive-only; `bbc_news` puts it in front of the model as
+    one coarse length signal beside thousands of TF-IDF terms, where the
+    classifier is robust to which counting path (BPE/whitespace) runs. The
+    "descriptive-only" verdict is scoped, not contradicted — it governs models
+    *sensitive* to the exact count, and lifts where they are robust; the tests
+    assert path-independent macro-F1 bounds.
+  - Backlog item 18 (a `ds.pipeline` vectorization step kind) re-checked and
+    **struck by reaffirmation**: the TF-IDF vectorizer again lives inside the
+    sklearn `ColumnTransformer` while the `ds` scoring `Pipeline` carries the
+    frame-shaped scale step, confirming the model-side-transform convention P11
+    settled suffices with a second consumer. No step kind is built (it would
+    smuggle a pickle into the strict-JSON `save_params` story).
+
+  Full lifecycle on `ds` + scikit-learn: checksum-verified fetch
+  (`fetch_dataset`'s fourth consumer), boundary validation, verbatim-duplicate
+  drop (99 articles — the diamonds/sms_spam leak guard), the text features,
+  ordinal-coded target, stratified split, a one-step scale plan (`fit_pipeline`),
+  stratified 5-fold macro cross-validation with the plan re-fitted per fold,
+  pipeline + model persisted and the held-out split scored from the reloaded
+  model. Held-out macro-F1 0.964 / accuracy 0.965 vs a length-only model (0.329 —
+  the honest headline that the topic signal is in the words) and the majority
+  class (0.077); CV macro-F1 0.957 ± 0.009. A `ds.features` addition, so the
+  top-level public surface (`tests/test_public_api.py`) is unchanged. `ROADMAP.md`
+  records the P17 plan-of-record entry and the `bbc_news` friction serve.
+- `projects/sunspots`: eighth **real-data** project (P16 — the second
+  **forecasting** one), with the autoregressive surface it pulled served in the
+  same demand loop. Forecasts the monthly Zurich/SILSO sunspot number, 1749–1983
+  (2,820 months), chosen after `flights` for a series a calendar-feature + naive
+  approach handles *badly*: the ~11-year solar cycle is aligned to nothing on the
+  calendar, so month carries no signal and the model must predict from the
+  series' own recent history. Two library gaps, both served here (because
+  forecasting is a committed capability whose first project already delegated its
+  model to raw scikit-learn):
+  - `ds.features.add_lagged_features(df, column, lags, *, dropna=True)` — the
+    autoregressive counterpart to `add_datetime_features`: adds
+    `<column>_lag_<k>` columns taken by row position (sort the time axis first),
+    ascending-ordered, dropping the warm-up rows by default. Stateless, so it
+    precedes a split. Built on first-consumer strength — a whole model class
+    needs it — not parked as a one-liner.
+  - `ds.modeling.timeseries.forecast_recursive(model, history, *, lags, steps)` —
+    forecast past the edge of the data by feeding each prediction back as later
+    steps' lags, the multi-step forecast a single `model.predict` cannot produce.
+    Pure-autoregression by contract; handles the `feature_names_in_` case so no
+    sklearn feature-name warning is raised.
+
+  Full lifecycle on `ds` + scikit-learn: checksum-verified fetch
+  (`fetch_dataset`'s third consumer — a live upstream repo, so the sha256 pin is
+  correct here), boundary validation, hand-assembled time axis (`assert_unique`
+  again), an Explore step that shows the flat by-month profile, lag features, a
+  chronological hold-out of the last decade, rolling-origin one-step CV
+  (`cross_validate_by_time` again), the model persisted and both forecasts scored
+  from the reloaded copy. Held-out (one-step-ahead) MAE 15.3 / r² 0.88 — strong;
+  the recursive multi-step forecast over 120 months decays honestly (MAE 52.5 /
+  r² −0.35, error compounds) yet still beats seasonal-naive (58.1) and naive-last
+  (63.1). Scope finding recorded: a pure-AR forecaster needs no `ds.pipeline`
+  scoring `Pipeline` (lags stateless, series complete, swings are signal, OLS
+  scale-free), so only the model is persisted. A `ds.features` / `ds.modeling`
+  addition, so the top-level public surface (`tests/test_public_api.py`) is
+  unchanged. `ROADMAP.md` records the P16 plan-of-record entry and the `sunspots`
+  friction backlog (items 30–31, both served).
+- `ds.eda.target_rate_by_category(df, column, target, *, min_count=1)` and the
+  paired `ds.viz.plot_target_rate` — the categorical counterpart to
+  `top_correlations`, which is numeric-only. The helper returns, per level of a
+  categorical column, its `count`, `frac`, the mean `target` within the level
+  (the "target rate" — a 0/1 target's positive rate, or any numeric target's
+  group mean) and the overall `baseline`, sorted by target rate descending, with
+  missing values kept as their own level. It is *descriptive*, not a fitted
+  feature (a target rate fed back as a model input is textbook leakage; the
+  docstring says to compute it on the training split when it informs a
+  decision). The plot draws per-level bars with a dashed baseline reference line,
+  per the reuse-across-stages rule. This closes `ROADMAP.md` friction item 29
+  (the `ds.eda` categorical↔target gap, parked in P15): `eda` was the one thin
+  general-purpose stage and four of seven projects are heavily-categorical
+  classification, so the signal had fired repeatedly. The
+  positive-rate-by-level *group table* was chosen over the Cramér's-V /
+  mutual-information *ranker* (a different question — which level, not which
+  column — and no project has hand-rolled it). A `ds.eda` addition, so the
+  top-level public surface (`tests/test_public_api.py`) is unchanged.
+  `projects/adult_income` adopts it in its Explore stage (>50K rate by
+  `marital_status` and `occupation`) to prove it earns its place; its end-to-end
+  test passes unchanged.
+
 ## [0.2.0] - 2026-07-18
 
 ### Added

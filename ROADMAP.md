@@ -15,28 +15,49 @@ working set of the most-reached-for helpers. Built out so far:
 | Acquire | `ds.io` | `load_table`, `save_table` (csv/tsv/parquet/json/jsonl), `load_raw`, `save_processed`, `fetch_dataset` (checksum-verified multi-mirror download), `save_params`/`load_params` (fitted-parameter JSON) |
 | Validate | `ds.validation` | `require_columns`, `assert_row_count`, `assert_no_nulls`, `assert_in_range`, `assert_in_set`, `assert_unique`, `assert_dtypes`, `check_schema` |
 | Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns`, `drop_duplicate_rows`, `coerce_dtypes`, `flag_outliers`, `clip_outliers`, `impute_missing` + split-safe pairs `fit_outlier_bounds`/`apply_flag_outliers`/`apply_clip_outliers`, `fit_impute_values`/`apply_impute_missing` |
-| Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
-| Feature | `ds.features` | `add_datetime_features` (selectable `features=` subset; opt-in `_elapsed_months` trend counter), `one_hot_encode`, `ordinal_encode`, `collapse_categories` (top-k + "other"), `scale_features`, `bin_column` + split-safe pairs `fit_one_hot_categories`/`apply_one_hot_encode`, `fit_ordinal_categories`/`apply_ordinal_encode`, `fit_topk_categories`/`apply_collapse_categories`, `fit_scale_params`/`apply_scale_features` |
-| Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `train_test_split_random` (shuffled, optionally stratified), `fit_baseline` (mean / majority / naive-last / seasonal-naive), `save_model`/`load_model` (joblib persistence), `count_tokens` |
+| Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations`, `target_rate_by_category` (per-level grouped target rate, the categorical read on the target) |
+| Feature | `ds.features` | `add_datetime_features` (selectable `features=` subset; opt-in `_elapsed_months` trend counter), `add_lagged_features` (autoregressive lag columns), `text_features` (char/word/word-length columns), `one_hot_encode`, `ordinal_encode`, `collapse_categories` (top-k + "other"), `scale_features`, `bin_column` + split-safe pairs `fit_one_hot_categories`/`apply_one_hot_encode`, `fit_ordinal_categories`/`apply_ordinal_encode`, `fit_topk_categories`/`apply_collapse_categories`, `fit_scale_params`/`apply_scale_features` |
+| Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `train_test_split_random` (shuffled, optionally stratified), `fit_baseline` (mean / majority / naive-last / seasonal-naive), `forecast_recursive` (recursive multi-step forecast from a lag-feature model), `save_model`/`load_model` (joblib persistence), `count_tokens` |
 | Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics`, `cross_validate_by_time` (rolling origin; optionally re-fits a transform pipeline per fold via `make_pipeline`), `cross_validate_kfold` (optionally stratified; same `make_pipeline` re-fit), `compare_models` |
-| Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_confusion_matrix`, `plot_residuals`, `plot_model_comparison`, `plot_series` (composable series/forecast plot) |
+| Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_target_rate` (per-level target rate + baseline line), `plot_confusion_matrix`, `plot_residuals`, `plot_model_comparison`, `plot_series` (composable series/forecast plot) |
 
 Supporting: `ds.pipeline` (a persistable fit-once/apply-many `Pipeline` over
 the `fit_*`/`apply_*` pairs, fitted in one call from a `FitStep` plan via
 `fit_pipeline`), `ds` CLI (`ds version`, `ds new`, `ds run`), a
 per-stage docs Guide with cross-stage recipes, a `test-extras` CI job,
 single-sourced version, and an extended project template. `projects/` holds the
-synthetic worked example (`_example`) and seven **real-data** projects:
+synthetic worked example (`_example`) and nine **real-data** projects:
 `nyc_taxis` (regression), `titanic` (binary classification), `flights`
 (forecasting), `diamonds` (multiclass classification), `sms_spam` (text /
 binary spam classification), `air_quality` (sensor gap-filling regression
-on an hourly time axis) and `adult_income` (heavily-categorical binary income
-classification).
+on an hourly time axis), `adult_income` (heavily-categorical binary income
+classification), `sunspots` (autoregressive forecasting — the second
+forecasting project, on a non-calendar solar cycle) and `bbc_news` (multiclass
+text topic classification — the second text project).
 
-## Goal evaluation (2026-07)
+## Goal evaluation (2026-07, refreshed post-P15)
 
 A deliberate stop to work backward from the project's stated goals instead of
-extending recent momentum. Verdicts, and what they imply:
+extending recent momentum. The per-goal verdicts below were written at the
+original 2026-07 stop; the **post-P15 refresh** that supersedes them:
+
+- **The hybrid workspace / promotion-loop goal — the most under-served at the
+  original stop — is now well-served.** The demand loop has run seven times
+  (`nyc_taxis`, `titanic`, `flights`, `diamonds`, `sms_spam`, `air_quality`,
+  `adult_income`), every backlog has been dispatched, and *every* library
+  addition since P1 traces to real-project friction. Release 0.2.0 shipped. The
+  promotion loop is the settled way this repo grows.
+- **The live gaps are forecasting/text depth (and, until this pass, `eda`
+  depth).** The `eda` categorical↔target gap (item 29) is now **closed** —
+  `target_rate_by_category` + `plot_target_rate` give the stage the categorical
+  read on the target it lacked. The remaining depth gaps are forecasting and
+  text: while `flights` (forecasting) and `sms_spam` (text) each have one
+  project, both delegated their modeling heart to raw sklearn, so the
+  forecasting/backtest and vectorization/text-feature surfaces are still
+  shallow. The next direction (the "Next up" entry) targets exactly these: run a
+  second forecasting and a second text project chosen to *pull* that depth.
+
+The original verdicts, and what they implied at the time:
 
 - **Hybrid workspace (library + `projects/` that consume it)** — *was the
   most under-served goal.* Until `nyc_taxis`, `projects/` held only the
@@ -67,15 +88,25 @@ extending recent momentum. Verdicts, and what they imply:
   most of the `nlp` extra was unused, and `polars` sat unused in the core
   dependencies. Extras now carry only dependencies code actually consumes
   (the rule is recorded in `pyproject.toml` and CLAUDE.md). In-scope reality
-  today: tabular regression/classification on pandas — widen it by building,
-  not by declaring.
+  today is **committed and growing**: tabular regression/classification on
+  pandas is the deepest surface, and forecasting and NLP/text are equally
+  in-scope commitments being widened by demand loops (the `flights` forecasting
+  project and the `sms_spam` text project each pulled real surface —
+  `plot_series`, `train_test_split_by_time`, `count_tokens`, the naive-baseline
+  strategies). The direction is to widen all three by *building* against real
+  projects, not to trim the claims to tabular-only — the modeling docstrings
+  that name forecasting and text stay as directional commitments.
 - **Engineering discipline** — *well-served* (strict typing, mirrored tests,
   coverage gate, honest docs). No change; point it at the gaps above.
 
 Completed work that mattered less against the goals (kept, but the lesson is
 recorded): `ds run` and the cross-stage cookbook recipes are good polish that
-consumed cycles while the demand side stayed empty; `count_tokens` is an
-orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
+consumed cycles while the demand side stayed empty. `count_tokens` began as an
+NLP toe-dip and is now a **kept, half-earned** helper: `sms_spam` (P10) made it
+a real — if descriptive-only — consumer, and it stays as an in-scope
+commitment. The way it fully earns its keep is a *second* text project whose
+modeling path genuinely needs it (see the "Next up" direction), not removal.
+The lesson is the ordering rule above: demand first.
 
 ## Plan of record
 
@@ -428,22 +459,115 @@ orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
     that one-liner behind a new name — the item-13/15/20/26 precedent — so it stays
     documented; `adult_income` keeps its one-line `decode_sentinels`. A **third**
     differently-typed sentinel would force the thin helper.
-  - Item 29 (`ds.eda` has no categorical↔target association view) — **struck /
-    parked, not built.** Unlike the fetch and sentinel dances, this gap was worked
-    around by *thinking* (domain knowledge picked the categorical features), not by
-    hand-rolled code, so there is nothing to promote and no consumer to document at;
-    the candidate shape is genuinely open (Cramér's-V / mutual-information ranker vs
-    a positive-rate-by-level group table vs a `bin_column`-style profiler). Trigger
-    recorded: a second heavily-categorical project that actually hand-rolls the
-    groupby, which also decides the shape. Do not build speculatively.
+  - Item 29 (`ds.eda` has no categorical↔target association view) — parked in
+    P15, **served in the follow-on goal-alignment pass**: built as
+    `target_rate_by_category` (the positive-rate-by-level group table) plus
+    `plot_target_rate`, adopted by `adult_income`. Full rationale — why the group
+    table over the Cramér's-V ranker, and why descriptive-not-fitted — is inline
+    in the friction backlog entry below.
 
-**Next up:** P15 served the `adult_income` backlog (items 27–29), so the demand
-queue is empty again — the next step is an **eighth demand loop**: a new
-real-data project, chosen by the grep-driven rule (grep which library surfaces
-still have no real consumer and pick the data shape that stresses the thinnest
-cluster by absence), whose friction regenerates the backlog. Deprioritized until
-a project pulls them: more EDA helpers (item 29's categorical↔target view is
-parked here), more cookbook recipes, more CLI.
+- **P16 — deepen forecasting with a second forecasting project (autoregression):
+  DONE.** `projects/sunspots` forecasts the monthly Zurich/SILSO sunspot number,
+  1749–1983 (2,820 months), chosen after `flights` precisely for a series the
+  calendar-feature + naive approach handles *badly*: the ~11-year solar cycle is
+  aligned to nothing on the calendar (the by-month means are flat within ±3% of
+  the overall mean, and `seasonal_naive` of period 12 is a poor guide), so the
+  signal is the series' own recent history — the first project to need
+  **autoregressive features** and a **recursive multi-step forecast**. Because
+  forecasting is a committed capability whose first project (`flights`) already
+  delegated its model to raw scikit-learn, this second forecasting project's
+  friction was served in the same demand loop (items 30–31):
+  - `ds.features.add_lagged_features(df, column, lags, *, dropna=True)` (item 30)
+    — the autoregressive counterpart to `add_datetime_features`: adds
+    `<column>_lag_<k>` columns taken by row position (sort by the time axis
+    first), dropping the warm-up rows by default. Stateless (a row's lags are the
+    rows beside it), so it is applied before the split like the datetime
+    features. It is the primitive an entire model class — autoregression —
+    cannot exist without, which is why it is built on its first consumer's
+    strength (the `plot_series` precedent), not parked as a one-liner: a single
+    `.shift(k)` is a line, but the named multi-lag set + warm-up handling +
+    ordering is the reusable shape.
+  - `ds.modeling.timeseries.forecast_recursive(model, history, *, lags, steps)`
+    (item 31) — forecast past the edge of the data by feeding each prediction
+    back as later steps' lags, the multi-step forecast a single `model.predict`
+    cannot produce. Clearly above the aliasing bar: it is a fiddly, error-prone
+    recursion (buffer management, feature-order alignment, the optional
+    `feature_names_in_` frame to avoid sklearn's name warning), not a wrapped
+    one-liner. Pure-AR only by contract (an exogenous feature would need a future
+    value it cannot supply) — recorded in the docstring.
+
+  Full lifecycle on `ds` + scikit-learn: checksum-verified fetch (`fetch_dataset`'s
+  third consumer — the mirror is a *live* upstream repo, so the sha256 pin is
+  correct here, unlike the seaborn projects), boundary validation, hand-assembled
+  time axis (`assert_unique`, its third consumer), an Explore step that *shows*
+  the modeling choice (the flat by-month profile), lag features, a chronological
+  hold-out of the last decade, rolling-origin one-step CV
+  (`cross_validate_by_time` again), the model persisted and both forecasts scored
+  from the reloaded copy. The honest headline is the horizon split: one-step-ahead
+  MAE 15.3 / r² 0.88 (strong), recursive multi-step over 120 months MAE 52.5 /
+  r² −0.35 (error compounds and the forecast decays toward the mean — the genuine
+  difficulty of long-range solar forecasting) — yet even the decayed recursive
+  forecast beats both calendar-naive references (seasonal-naive MAE 58.1,
+  naive-last MAE 63.1). Scope finding, recorded not hidden: a pure-AR forecaster
+  needs **no** `ds.pipeline` scoring `Pipeline` (lags stateless, series complete,
+  swings are signal, OLS scale-free), so only the model is persisted — `flights`
+  had a one-step plan, this has none.
+
+- **P17 — deepen text with a second text project (multiclass topic
+  classification): DONE.** `projects/bbc_news` classifies the 2,225 BBC News
+  articles into five topics (business/entertainment/politics/sport/tech), chosen
+  after `sms_spam` to stress the text surface a second time and decide the
+  triggers that first project parked. Served in the same demand loop (item 21;
+  items 18 and count_tokens' verdict re-decided by a second consumer):
+  - `ds.features.text_features(df, column, *, features=None)` (item 21) — a
+    stateless one-call expansion of a string column into `<column>_char_count`,
+    `_word_count` and `_avg_word_length`, the text counterpart to
+    `add_datetime_features`. `sms_spam` hand-rolled these because the stage had
+    none; a second text project hand-rolling the same family is exactly the
+    trigger item 21 recorded, and the shape it decides is the *frame helper*
+    (emit the set in one call) over single-column counters. Deliberately
+    encoding-independent (pure string ops), which is what keeps them model-safe —
+    unlike `count_tokens`.
+  - **`count_tokens` earns a modeling consumer.** `sms_spam` kept `token_count`
+    descriptive-only, wary of its extras-dependent value (the P11 verdict). This
+    project re-decides that verdict with evidence: as *one coarse length feature
+    beside thousands of TF-IDF terms* the classifier is robust to which counting
+    path runs, so it feeds the model here — the accurate-count path's first
+    modeling consumer, with the tests asserting path-independent macro-F1 bounds.
+    The "half-earned" verdict is upgraded, not contradicted: the caveat still
+    stands where a model is *sensitive* to the exact count; it lifts where the
+    model is robust.
+  - **Item 18 (vectorization step kind) re-checked, convention reaffirmed.** The
+    TF-IDF vectorizer is again the fitted heart and again lives inside the
+    sklearn `ColumnTransformer` while the `ds` scoring `Pipeline` carries the
+    frame-shaped scale step. This second text consumer *confirms* the
+    model-side-transform convention suffices (the exact question the item parked
+    for "a second text project"), so no first-class vectorize step is built — it
+    would smuggle a pickle into the strict-JSON `save_params` story, the reason
+    P11 rejected it. Struck-by-reaffirmation, not built.
+
+  Full lifecycle on `ds` + scikit-learn: checksum-verified fetch
+  (`fetch_dataset`'s fourth consumer), boundary validation, verbatim-duplicate
+  drop (99 articles — the diamonds/sms_spam leak guard), the text features,
+  ordinal-coded target, stratified split, a one-step scale plan
+  (`fit_pipeline`), stratified 5-fold macro CV with the plan re-fitted per fold,
+  pipeline + model persisted and the held-out split scored from the reloaded
+  model. Held-out macro-F1 0.964 / accuracy 0.965 vs a length-only model (0.329 —
+  the honest headline that the topic signal is in the *words*, length a modest
+  supplement) and the majority class (0.077); CV macro-F1 0.957 ± 0.009.
+
+**Next up:** the goal-alignment pass after P15 closed the three standing gaps —
+`eda` categorical↔target depth (item 29), forecasting depth (P16), and text depth
+(P17) — so the demand queue is empty again. The next step is an ordinary **ninth
+demand loop**: a new real-data project chosen by the grep-driven rule (grep which
+library surfaces still have no real consumer and pick the data shape that stresses
+the thinnest cluster by absence), whose friction regenerates the backlog.
+Deprioritized until a project pulls them: a Cramér's-V / mutual-information
+categorical *ranker* (item 29's unbuilt sibling shape), a first-class
+`ds.pipeline` vectorize step (item 18 — only if a text project shows the
+model-side convention genuinely fails, which two now have not), a dedicated
+multi-step *backtest* harness in `ds.evaluation` (no project has hand-rolled a
+rolling recursive-forecast evaluation yet), more cookbook recipes, more CLI.
 
 ## Friction backlog (from `projects/nyc_taxis`)
 
@@ -718,6 +842,16 @@ from the `diamonds` list; in observed-pain order:
     will actually look. Revisit only when a second text project shows
     whether the convention suffices or a first-class vectorize step kind
     earns a build.
+    **Follow-on (P17): the convention suffices — reaffirmed, not built.**
+    `projects/bbc_news`, the second text project, is again a TF-IDF-hearted
+    pipeline and again puts the vectorizer inside the sklearn
+    `ColumnTransformer` while the `ds` scoring `Pipeline` carries only the
+    frame-shaped scale step — cleanly, with no workaround. That is exactly the
+    "does the convention hold with a second consumer" test this item parked, and
+    the answer is yes, so no vectorize step kind is built. It would still smuggle
+    a pickle into the strict-JSON `save_params` story; the trigger to build one
+    is now the *opposite* — a text project the model-side convention genuinely
+    cannot serve.
 19. ~~**`count_tokens`' graceful degradation is per-call and invisible to
     the caller.**~~ — **resolved in P11** (served first, as the recorded
     strongest candidate): `count_tokens` now resolves which counting path
@@ -749,14 +883,21 @@ from the `diamonds` list; in observed-pain order:
     trigger is a second project meeting a silently-wrong boundary read that
     only an expected-shape check catches, which will also show which shape
     recurs (a row-count assert vs a more general expected-shape check).
-21. ~~**The features stage has no text helpers.**~~ — **struck in P11, not
-    built**, exactly as the item recorded for itself: `char_count` and
-    `token_count` are two well-documented lines each, hand-rolled in one
-    project (the item-13/15 precedent again). The trigger stays recorded: a
-    second text project hand-rolling the same columns decides both the bar
-    and the shape (a `text_features(df, column)` frame helper vs more
-    single-column counters alongside `count_tokens`). The project keeps its
-    two lines.
+21. ~~**The features stage has no text helpers.**~~ — struck in P11 as
+    observed-once, **served in P17** when the recorded trigger fired.
+    `char_count`/`token_count` were two hand-rolled lines in `sms_spam`; when
+    `projects/bbc_news` reached for the same length-feature family a second time,
+    the trigger this item recorded ("a second text project hand-rolling the same
+    columns decides both the bar and the shape") fired, and it decided the
+    **frame helper**: `ds.features.text_features(df, column, *, features=None)`
+    emits `<column>_char_count`, `_word_count` and `_avg_word_length` in one
+    stateless call (the `add_datetime_features` shape), rather than a scatter of
+    single-column counters. It deliberately carries only encoding-independent
+    string features — `token_count` stays in `ds.modeling.nlp.count_tokens`,
+    because its extras-dependent value is a different contract (that split is
+    itself the item-18/26 "keep the reproducible part separate" lesson). `bbc_news`
+    consumes it; `sms_spam` keeps its two inline lines (a finished project, not
+    retrofitted).
 
 Notes from the same run, for the record:
 
@@ -775,6 +916,18 @@ Notes from the same run, for the record:
   per-call, undetectable — is itself the sharpest friction this run hit).
   Recorded, not hidden; no action until a consumer wants the
   accurate-count path badly enough to declare a hard tiktoken dependency.
+  **Upgrade (P17): the verdict was too absolute — "half-earned" becomes
+  "earns a robust modeling consumer."** `bbc_news` puts `token_count` in front
+  of the model, and it holds: the extras-dependence bars the count from a model
+  that is *sensitive* to its exact value, but not from one that is *robust* to
+  it — and a topic classifier with a TF-IDF heart, where `token_count` is one
+  coarse length signal among thousands of terms, is robust (its predictions
+  barely move whether the count is BPE or whitespace). So the count feeds the
+  model there, with the tests asserting path-independent macro-F1 bounds instead
+  of exact values. The reproducibility caveat is now *scoped* (it governs
+  sensitive models), not blanket; the split between the reproducible length
+  features (`ds.features.text_features`) and the extras-dependent count
+  (`count_tokens`) is what lets a project choose per feature.
 - **The `labels=` mapping's second consumer composed cleanly.** Binary
   `{0: "ham", 1: "spam"}` on the same three surfaces diamonds earned it
   for — no friction, mapping semantics held at two classes.
@@ -1016,6 +1169,29 @@ now fire on their agreed second occurrence. Numbering continues from the
     profiler). Trigger: a second heavily-categorical project that actually
     hand-rolls the groupby, which also decides the shape. Not built speculatively.
 
+    **Follow-on: served.** The goal-alignment pass that followed P15 promoted
+    this from parked to built, because it is the one thin general-purpose stage
+    (`eda`, three read-only helpers) and four of seven projects are
+    heavily-categorical classification, so the signal has fired repeatedly even
+    where each project reached for domain knowledge instead of code. The shape
+    chosen among the three candidates is the **positive-rate-by-level group
+    table**: `ds.eda.target_rate_by_category(df, column, target, *,
+    min_count=1)` returns, per level of a categorical column, its `count`,
+    `frac`, the mean `target` within the level (the "target rate" — a 0/1
+    target's positive rate, or any numeric target's group mean) and the overall
+    `baseline`, sorted by target rate descending — the categorical counterpart
+    to `top_correlations` (which is numeric-only). It is *descriptive*, not a
+    fitted feature (a target rate fed back as an input is textbook leakage; the
+    docstring says to compute it on the training split when it informs a
+    decision), and it pairs with `ds.viz.plot_target_rate` (per-level bars with a
+    dashed baseline line) per the reuse-across-stages rule. The Cramér's-V /
+    mutual-information *ranker* across columns was not built — it answers a
+    different question (which column, not which level) and no project has
+    hand-rolled it; it stays the open shape a future association-ranking friction
+    would pull. `adult_income` adopts the group table in its Explore stage
+    (>50K rate by `marital_status` and `occupation`) to prove it earns its place;
+    its end-to-end test passes unchanged.
+
 Notes from the same run, for the record:
 
 - **The value-whitespace friction dissolved into a `load_raw` kwarg.** Every
@@ -1068,6 +1244,79 @@ numeric-label floor (item 6's scoping held a fourth time); the `labels=` binary
 mapping put the income names on the confusion/per-class axes (third consumer);
 and the whole persistence story (`fit_pipeline` → `save_params`/`load_params`,
 `save_model`/`load_model`, held-out split scored from reloaded state only).
+
+## Friction backlog (from `projects/sunspots`)
+
+The eighth run of the demand loop, and the **second forecasting** one — picked
+after `flights` for a series a calendar-feature + naive approach handles badly
+(a solar cycle aligned to nothing on the calendar), so the friction would pull
+the forecasting surface deeper. Numbering continues from the `adult_income` list.
+Because forecasting is a committed capability whose first project delegated its
+model to raw scikit-learn, both items were **served in the same demand loop**
+(the P3 precedent of building and dogfooding in one batch); in observed-pain
+order:
+
+30. ~~**The features stage has no autoregressive (lag) features.**~~ —
+    **served in P16**: `ds.features.add_lagged_features(df, column, lags, *,
+    dropna=True)`, the autoregressive counterpart to `add_datetime_features`.
+    `flights` predicted from calendar position; this series has none worth
+    using, so its only signal is its own recent history — every AR model needs
+    lag columns, and the library had no way to make them. The helper adds
+    `<column>_lag_<k>` (taken by row position — sort the time axis first),
+    ascending-ordered regardless of request order, dropping the warm-up rows by
+    default; it is stateless, so it precedes the split like the datetime
+    features. Built on first-consumer strength rather than parked as a one-liner
+    (the `plot_series` precedent, not the item-13/15 one): a single `.shift(k)`
+    is a line, but a *whole model class* — autoregression — is impossible
+    without the named multi-lag set, and the warm-up/ordering handling is the
+    reusable part. `sunspots` is its first consumer.
+31. ~~**No way to forecast past the edge of the data.**~~ — **served in P16**:
+    `ds.modeling.timeseries.forecast_recursive(model, history, *, lags, steps)`.
+    A lag-feature model does one-step-ahead scoring with a plain `model.predict`
+    (each row reads the true recent values), but forecasting *further* than one
+    step has no observed values to read — the later steps' lags are the model's
+    own earlier predictions. `forecast_recursive` feeds each prediction back and
+    slides the window, the multi-step forecast raw sklearn cannot do. Clearly
+    above the aliasing bar — a fiddly, error-prone recursion (buffer management,
+    feature-order alignment with `lags`, an optional `feature_names_in_` frame to
+    avoid sklearn's name warning), not a wrapped one-liner. Scoped to pure
+    autoregression by contract (an exogenous feature would need a future value it
+    cannot supply), recorded in the docstring. `sunspots`'s held-out decade is
+    its first consumer, and the honest finding rides along: recursive error
+    compounds (r² 0.88 one-step → −0.35 recursive), yet still beats both
+    calendar-naive references.
+
+Notes from the same run, for the record:
+
+- **A pure-AR forecaster needs no `ds.pipeline` scoring `Pipeline` — a scope
+  finding, not a gap.** `flights` recorded that clean time-series data leaves the
+  one-step fit plan with little to do; this project takes it to zero: lags are
+  stateless, the series is complete (no impute), its swings are the signal (no
+  clip), and OLS is scale-free (no scale), so nothing frame-shaped is fitted and
+  only the model is persisted. Recorded so the missing `*_scoring.json` reads as
+  intended, not as an omission. (Had this model wanted regularization, the scaler
+  would live *inside* the sklearn estimator — the item-18 "model-side transforms
+  live in the estimator" convention — keeping `forecast_recursive`'s
+  raw-lags-in contract clean.)
+- **A dedicated multi-step backtest was not built.** The one-step rolling-origin
+  CV reused `cross_validate_by_time`, and the held-out multi-step forecast used
+  `forecast_recursive` directly; no rolling *multi-step* backtest was
+  hand-rolled, so nothing pulls a `ds.evaluation` backtest harness yet. Recorded
+  as the trigger — a project that hand-rolls a rolling recursive-forecast
+  evaluation — so the next session doesn't build it speculatively.
+- **`fit_baseline`'s naive strategies are the *right* weak references here.**
+  Their positional alignment (item 23's documented completeness assumption)
+  holds — the held-out window continues the training axis with no gap — and both
+  are honestly poor on a non-calendar cycle, which is the point of showing them.
+
+Where the library did *not* fight: `fetch_dataset` took its third consumer (the
+first with a genuinely live upstream repo, where the sha256 pin is clearly
+right); `assert_unique` its third (the `YYYY-MM` parse); `cross_validate_by_time`
+composed one-step rolling-origin folds on the lagged frame first-try;
+`regression_metrics`/`compare_models`/`plot_residuals`/`plot_model_comparison`
+and `plot_series` (the two-call history + forecast overlay, now with *two*
+prediction series) all composed as on `flights`; and `save_model`/`load_model`
+scored both forecasts from the reloaded model.
 
 Kept for the record — CLAUDE.md's engineering notes point here. Each was
 re-checked in the 2026-07 evaluation; verdicts inline.

@@ -52,7 +52,12 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 
 from ds import Settings, get_logger, get_settings, seed_everything
-from ds.eda import missing_value_report, summarize, top_correlations
+from ds.eda import (
+    missing_value_report,
+    summarize,
+    target_rate_by_category,
+    top_correlations,
+)
 from ds.evaluation import (
     classification_metrics,
     compare_models,
@@ -79,6 +84,7 @@ from ds.viz import (
     plot_missingness,
     plot_model_comparison,
     plot_outliers,
+    plot_target_rate,
     set_theme,
 )
 
@@ -267,6 +273,24 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     summarize(df).to_csv(output_dir / "summary.csv")
     missing_value_report(df).to_csv(output_dir / "missing.csv")
     top_correlations(df, n=15).to_csv(output_dir / "top_correlations.csv", index=False)
+
+    # top_correlations is numeric-only, so it cannot rank the categorical
+    # predictors — which on this dataset are the strongest. target_rate_by_category
+    # is the categorical read: the >50K rate per level of marital_status (the
+    # married-civ-spouse rate towers over the rest — this is what makes the
+    # married_rule reference below a real classifier, not a coin flip) and per
+    # occupation (Exec-managerial / Prof-specialty at the top, service trades at
+    # the bottom). Descriptive only: it never becomes a model feature, so
+    # computing it over the whole frame here is a profile, not leakage.
+    for feature in ("marital_status", "occupation"):
+        target_rate_by_category(df, feature, _TARGET).to_csv(
+            output_dir / f"target_rate_{feature}.csv"
+        )
+    fig_rate, ax_rate = plt.subplots()
+    plot_target_rate(df, "marital_status", _TARGET, ax=ax_rate)
+    ax_rate.set_title(">50K rate by marital status")
+    fig_rate.savefig(output_dir / "target_rate_marital_status.png", bbox_inches="tight")
+    plt.close(fig_rate)
 
     fig, ax = plt.subplots()
     plot_missingness(df, ax=ax)
