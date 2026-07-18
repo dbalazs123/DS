@@ -7,6 +7,39 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `projects/adult_income`: seventh **real-data** project (P14 — the seventh run
+  of the demand loop, and the first **heavily-categorical** one). Predicts
+  whether a 1994 US census respondent earns over $50K from the 32,560-row
+  training split of the UCI Adult / Census Income dataset (downloaded once into
+  git-ignored `data/raw/` from a GitHub mirror, verified by pinned sha256
+  because the UCI archive is not reachable from every network). Chosen — by the
+  established rule of grepping which surfaces still had no real consumer —
+  because the whole *categorical* cluster was thin or unused, and a
+  high-cardinality tabular dataset stresses it by absence. First real consumers
+  earned: `fit_one_hot_categories(drop_first=True)` (the dummy-trap guard the
+  wide indicator matrix needs for a full-rank linear model) and `flag_outliers`
+  on its *flag*-not-clip path (the ~92%-zero `capital_gain`/`capital_loss` are
+  flagged for the record but kept — clipping would erase the large-gain signal
+  that most cleanly separates the classes). Second consumers:
+  `fit_topk_categories`/`collapse_categories` (the 41-country `native_country`
+  and 14-trade `occupation` tails collapsed to `"other"` before one-hot) and
+  the `labels=` display mapping (binary `{0: "<=50K", 1: ">50K"}`). Full
+  lifecycle on `ds` + scikit-learn: checksum-verified fetch, boundary
+  validation (`assert_row_count`, `check_schema` numeric-dtype pin), the `"?"`
+  sentinels decoded to NaN and the target encoded 0/1, stratified split, a
+  four-step fit plan (collapse tails / mode-impute the sentinels / wide one-hot
+  with `drop_first` / scale) fitted on the training split and re-fitted inside
+  every stratified CV fold, pipeline + model persisted and the held-out split
+  scored from reloaded state. Held-out (>50K = positive): accuracy 0.861 /
+  F1 0.679 / precision 0.763 / recall 0.611 vs an interpretable
+  marital-status rule (0.713 / 0.590) and the majority class (0.759 / 0.000);
+  CV F1 0.653 ± 0.007. `load_raw`'s `skipinitialspace=True` forwarding stripped
+  the value whitespace without a project-local loader (third kwargs-forwarding
+  consumer). Per the demand-first rule the project promotes nothing itself; its
+  friction list is `ROADMAP.md` items 27–29 — led by the checksum-verified
+  multi-mirror fetch, now hand-rolled a second time (air_quality's fetch-helper
+  trigger fires), and the `"?"` sentinel decode (air_quality item 26's
+  second-sentinel-project trigger fires, string flavor).
 - The `air_quality` friction backlog served (P13 — `ROADMAP.md` items 22–26 in
   observed-pain order; three served, two resolved by documentation), each
   dogfooded by `projects/air_quality` (and `projects/flights` for the shared
