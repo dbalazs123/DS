@@ -123,6 +123,13 @@ Things that cost a round-trip to discover; save yourself the CI failure:
   Extras only carry deps that code actually consumes (today: `tiktoken`), so the
   job stays cheap by construction. If you add code behind a new extra, declare
   the dep in that extra and this job exercises it automatically.
+- **CI enforces the lock: every job runs `uv sync --locked`.** After editing any
+  dependency in `pyproject.toml`, run `uv lock` and commit the refreshed
+  `uv.lock` in the same change, or CI fails loudly (drift no longer silently
+  re-resolves). Bump Python deps deliberately with `uv lock --upgrade`.
+  Dependabot is scoped to **GitHub Actions only** (`.github/dependabot.yml`): it
+  can't regenerate a uv lockfile, so a pip PR would be un-mergeable against the
+  `--locked` gate — that's why Python-dep bumps are a manual `uv lock` step.
 - **Public-API convention (settled — import by stage):** stage functions are
   imported by stage (`from ds.eda import ...`), and `ds.pipeline.Pipeline` /
   `PipelineStep` likewise from `ds.pipeline`; only the stage-independent

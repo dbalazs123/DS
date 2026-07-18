@@ -507,6 +507,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `nbstripout` pre-commit hook to strip notebook outputs before they reach git.
 
 ### Changed
+- CI now installs with `uv sync --locked` in every job, so a `uv.lock` that has
+  drifted from `pyproject.toml` fails CI loudly instead of being silently
+  re-resolved. Dependabot is scoped to **GitHub Actions only**
+  (`.github/dependabot.yml`): it cannot regenerate a uv lockfile, so its Python
+  ("pip") PRs would be un-mergeable against the `--locked` gate — Python deps are
+  now bumped deliberately with `uv lock --upgrade` and the refreshed lock
+  committed. CLAUDE.md records the workflow.
 - `ROADMAP.md` restructured around a goal evaluation (2026-07): per-goal
   verdicts, a P1–P4 plan of record (next up: model persistence, then
   Model/Evaluate build-out), the `nyc_taxis` friction backlog, and the settled
