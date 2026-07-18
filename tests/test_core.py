@@ -12,7 +12,7 @@ from ds.reproducibility import seed_everything
 
 
 def test_version_exposed() -> None:
-    assert ds.__version__ == "0.1.0"
+    assert ds.__version__ == "0.2.0"
 
 
 def test_settings_defaults_and_paths() -> None:
