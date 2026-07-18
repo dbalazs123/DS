@@ -7,6 +7,42 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `projects/sunspots`: eighth **real-data** project (P16 — the second
+  **forecasting** one), with the autoregressive surface it pulled served in the
+  same demand loop. Forecasts the monthly Zurich/SILSO sunspot number, 1749–1983
+  (2,820 months), chosen after `flights` for a series a calendar-feature + naive
+  approach handles *badly*: the ~11-year solar cycle is aligned to nothing on the
+  calendar, so month carries no signal and the model must predict from the
+  series' own recent history. Two library gaps, both served here (because
+  forecasting is a committed capability whose first project already delegated its
+  model to raw scikit-learn):
+  - `ds.features.add_lagged_features(df, column, lags, *, dropna=True)` — the
+    autoregressive counterpart to `add_datetime_features`: adds
+    `<column>_lag_<k>` columns taken by row position (sort the time axis first),
+    ascending-ordered, dropping the warm-up rows by default. Stateless, so it
+    precedes a split. Built on first-consumer strength — a whole model class
+    needs it — not parked as a one-liner.
+  - `ds.modeling.timeseries.forecast_recursive(model, history, *, lags, steps)` —
+    forecast past the edge of the data by feeding each prediction back as later
+    steps' lags, the multi-step forecast a single `model.predict` cannot produce.
+    Pure-autoregression by contract; handles the `feature_names_in_` case so no
+    sklearn feature-name warning is raised.
+
+  Full lifecycle on `ds` + scikit-learn: checksum-verified fetch
+  (`fetch_dataset`'s third consumer — a live upstream repo, so the sha256 pin is
+  correct here), boundary validation, hand-assembled time axis (`assert_unique`
+  again), an Explore step that shows the flat by-month profile, lag features, a
+  chronological hold-out of the last decade, rolling-origin one-step CV
+  (`cross_validate_by_time` again), the model persisted and both forecasts scored
+  from the reloaded copy. Held-out (one-step-ahead) MAE 15.3 / r² 0.88 — strong;
+  the recursive multi-step forecast over 120 months decays honestly (MAE 52.5 /
+  r² −0.35, error compounds) yet still beats seasonal-naive (58.1) and naive-last
+  (63.1). Scope finding recorded: a pure-AR forecaster needs no `ds.pipeline`
+  scoring `Pipeline` (lags stateless, series complete, swings are signal, OLS
+  scale-free), so only the model is persisted. A `ds.features` / `ds.modeling`
+  addition, so the top-level public surface (`tests/test_public_api.py`) is
+  unchanged. `ROADMAP.md` records the P16 plan-of-record entry and the `sunspots`
+  friction backlog (items 30–31, both served).
 - `ds.eda.target_rate_by_category(df, column, target, *, min_count=1)` and the
   paired `ds.viz.plot_target_rate` — the categorical counterpart to
   `top_correlations`, which is numeric-only. The helper returns, per level of a

@@ -21,6 +21,7 @@ from ds.features import (
     ScaleParams,
     TopKCategories,
     add_datetime_features,
+    add_lagged_features,
     apply_collapse_categories,
     apply_one_hot_encode,
     apply_ordinal_encode,
@@ -407,6 +408,35 @@ def test_add_datetime_features(sample_df: pd.DataFrame) -> None:
 def test_add_datetime_features_missing_column(sample_df: pd.DataFrame) -> None:
     with pytest.raises(KeyError):
         add_datetime_features(sample_df, "nope")
+
+
+def test_add_lagged_features_shifts_by_row_position() -> None:
+    df = pd.DataFrame({"y": [10, 20, 30, 40, 50]})
+    out = add_lagged_features(df, "y", [1, 2])
+    # max lag is 2, so the first two warm-up rows are dropped and the index reset.
+    assert list(out["y"]) == [30, 40, 50]
+    assert list(out["y_lag_1"]) == [20, 30, 40]
+    assert list(out["y_lag_2"]) == [10, 20, 30]
+    assert list(out.index) == [0, 1, 2]
+
+
+def test_add_lagged_features_orders_columns_ascending_and_keeps_warmup_when_asked() -> None:
+    df = pd.DataFrame({"y": [1, 2, 3, 4]})
+    out = add_lagged_features(df, "y", [3, 1], dropna=False)
+    added = [col for col in out.columns if col != "y"]
+    assert added == ["y_lag_1", "y_lag_3"]  # ascending, regardless of request order
+    assert len(out) == 4  # warm-up rows kept
+    assert bool(pd.isna(out["y_lag_1"].iloc[0]))
+
+
+def test_add_lagged_features_rejects_bad_lags() -> None:
+    df = pd.DataFrame({"y": [1, 2, 3]})
+    with pytest.raises(ValueError, match="positive"):
+        add_lagged_features(df, "y", [0])
+    with pytest.raises(ValueError, match="at least one"):
+        add_lagged_features(df, "y", [])
+    with pytest.raises(KeyError):
+        add_lagged_features(df, "missing", [1])
 
 
 def test_add_datetime_features_emits_only_the_selected_subset(sample_df: pd.DataFrame) -> None:

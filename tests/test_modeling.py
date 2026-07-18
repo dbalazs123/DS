@@ -21,12 +21,12 @@ from ds.evaluation import (
     per_class_metrics,
     regression_metrics,
 )
-from ds.features import fit_scale_params
+from ds.features import add_lagged_features, fit_scale_params
 from ds.modeling.baseline import fit_baseline
 from ds.modeling.nlp import count_tokens
 from ds.modeling.persistence import load_model, save_model
 from ds.modeling.tabular import split_features_target, train_test_split_random
-from ds.modeling.timeseries import train_test_split_by_time
+from ds.modeling.timeseries import forecast_recursive, train_test_split_by_time
 from ds.pipeline import FitStep, Pipeline, fit_pipeline
 from ds.preprocessing import ImputeValues, fit_impute_values
 from ds.viz import set_theme
@@ -54,6 +54,28 @@ def test_time_split_is_chronological() -> None:
 def test_time_split_bad_size() -> None:
     with pytest.raises(ValueError, match="test_size"):
         train_test_split_by_time(pd.DataFrame({"t": [1]}), "t", test_size=1.5)
+
+
+def test_forecast_recursive_feeds_predictions_back() -> None:
+    # A model that perfectly continues an arithmetic series: y_t = 2*y_{t-1} - y_{t-2}
+    # (a constant +step), i.e. next = last + (last - prev). Fitting a linear model
+    # on lag_1, lag_2 recovers exactly that, so the recursion should extrapolate
+    # the straight line 10, 20, 30, ... forward.
+    history = list(range(10, 101, 10))  # 10, 20, ..., 100
+    frame = add_lagged_features(pd.DataFrame({"y": history}), "y", [1, 2])
+    model = LinearRegression().fit(frame[["y_lag_1", "y_lag_2"]], frame["y"])
+    out = forecast_recursive(model, history, lags=[1, 2], steps=3)
+    assert out == pytest.approx([110.0, 120.0, 130.0])
+
+
+def test_forecast_recursive_validates_inputs() -> None:
+    model = LinearRegression().fit(pd.DataFrame({"a": [1.0, 2.0]}), [1.0, 2.0])
+    with pytest.raises(ValueError, match="steps"):
+        forecast_recursive(model, [1.0, 2.0], lags=[1], steps=0)
+    with pytest.raises(ValueError, match="positive"):
+        forecast_recursive(model, [1.0, 2.0], lags=[0], steps=1)
+    with pytest.raises(ValueError, match="largest lag"):
+        forecast_recursive(model, [1.0], lags=[3], steps=1)
 
 
 def _labeled_frame(n: int = 100) -> pd.DataFrame:

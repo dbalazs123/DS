@@ -368,6 +368,68 @@ def add_datetime_features(
     return out
 
 
+def add_lagged_features(
+    df: pd.DataFrame,
+    column: str,
+    lags: Sequence[int],
+    *,
+    dropna: bool = True,
+) -> pd.DataFrame:
+    """Add lagged copies of a column — the autoregressive features a forecaster needs.
+
+    For each ``k`` in ``lags`` this adds a ``<column>_lag_<k>`` column holding
+    the value ``k`` rows earlier, so a model can learn from a series' own recent
+    history — momentum, cycles that no calendar feature captures — rather than
+    only its position on the clock. It is the time-series counterpart to
+    :func:`add_datetime_features`: where that expands *when* a row is observed,
+    this expands *what came before it*. The frame must already be in time order,
+    because lags are taken by row position (exactly like
+    :meth:`pandas.Series.shift`); sort by the time axis first.
+
+    The first ``max(lags)`` rows have no complete history and so carry ``NaN``
+    lag values. With ``dropna=True`` (the default) they are dropped and the index
+    reset, leaving a frame ready to fit; pass ``dropna=False`` to keep them (e.g.
+    to stay aligned with another frame) and handle the warm-up gaps yourself.
+
+    This is a *stateless* transform — a row's lags depend only on the rows
+    already beside it, nothing is learned from the frame — so, like
+    :func:`add_datetime_features`, it is safe to apply before a train/test split.
+    Forecasting past the end of the series, where later steps' lags are the
+    model's own earlier predictions, is
+    :func:`ds.modeling.timeseries.forecast_recursive`.
+
+    Args:
+        df: The source DataFrame, already sorted into time order.
+        column: The column to lag.
+        lags: The positive lag offsets to emit (a lag of ``k`` looks ``k`` rows
+            back). Duplicates are ignored and columns come out in ascending lag
+            order regardless of the order requested.
+        dropna: If ``True`` (default), drop the warm-up rows whose lag columns
+            are ``NaN`` and reset the index.
+
+    Returns:
+        A new DataFrame with the ``<column>_lag_<k>`` columns added.
+
+    Raises:
+        KeyError: If ``column`` is not present.
+        ValueError: If ``lags`` is empty or names a non-positive lag.
+    """
+    if column not in df.columns:
+        raise KeyError(column)
+    ordered_lags = sorted(set(lags))
+    if not ordered_lags:
+        raise ValueError("lags must name at least one lag")
+    if ordered_lags[0] < 1:
+        raise ValueError("lags must be positive (a lag of k looks k rows back)")
+    out = df.copy()
+    lag_columns = [f"{column}_lag_{k}" for k in ordered_lags]
+    for k, name in zip(ordered_lags, lag_columns, strict=True):
+        out[name] = out[column].shift(k)
+    if dropna:
+        out = out.dropna(subset=lag_columns).reset_index(drop=True)
+    return out
+
+
 def _categorical_columns(df: pd.DataFrame, columns: Sequence[str] | None) -> list[str]:
     """Resolve which columns to encode, validating any explicit names."""
     if columns is None:
@@ -864,6 +926,7 @@ __all__ = [
     "ScaleParams",
     "TopKCategories",
     "add_datetime_features",
+    "add_lagged_features",
     "apply_collapse_categories",
     "apply_one_hot_encode",
     "apply_ordinal_encode",
