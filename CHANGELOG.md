@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-18
+
 ### Added
 - Weekly `deps-upgrade` GitHub Actions workflow
   (`.github/workflows/deps-upgrade.yml`, also `workflow_dispatch`): runs

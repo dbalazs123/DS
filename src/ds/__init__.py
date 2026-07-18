@@ -35,7 +35,7 @@ from ds.reproducibility import seed_everything
 
 # Single source of truth for the package version; Hatch reads it at build time
 # (see [tool.hatch.version] in pyproject.toml).
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # The top-level surface is deliberately just the cross-cutting infrastructure
 # every project reaches for regardless of lifecycle stage. Stage helpers (and
