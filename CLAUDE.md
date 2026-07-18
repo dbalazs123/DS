@@ -31,7 +31,9 @@ in the **same** change.
 │                          #   titanic = real-data survival classification;
 │                          #   flights = real-data passenger forecasting;
 │                          #   diamonds = real-data cut grading, multiclass;
-│                          #   sms_spam = real-data spam detection, text)
+│                          #   sms_spam = real-data spam detection, text;
+│                          #   air_quality = real-data sensor gap-filling,
+│                          #   hourly-axis regression with real missingness)
 ├── templates/project/     # copier template for new projects
 ├── notebooks/             # exploratory notebooks
 ├── data/                  # git-ignored: raw/ interim/ processed/
@@ -77,16 +79,17 @@ more detail).
 
 ## Roadmap
 
-[`ROADMAP.md`](ROADMAP.md) carries the plan of record (P1–P11 all done; P11
-served the `sms_spam` backlog, items 18–21, in observed-pain order:
-`count_tokens` now resolves its counting path once per process — cached,
-success or failure — so the vocabulary-unreachable stall that hit the
-extra's first consumer is one ~0.4 s probe instead of ~35 minutes, and the
-project's hand-rolled guard is deleted; item 18 resolved by documenting the
-"model-side transforms live in the estimator" convention as `ds.pipeline`'s
-fourth design point rather than designing a vectorize step kind from one
-consumer; items 20/21 struck with second-project triggers recorded. The
-queue is empty — the next step is a sixth demand loop), a goal
+[`ROADMAP.md`](ROADMAP.md) carries the plan of record (P1–P12 all done; P12
+ran the sixth demand loop — `projects/air_quality` reconstructs a reference CO
+measurement from the rest of a monitoring station on the UCI Air Quality
+dataset, the first project against real instrument-outage missingness on a
+gapped hourly axis. It regenerated the backlog as items 22–26: the headline
+is item 22, where `cross_validate_by_time(make_pipeline=...)` — item 9's
+parked question — finally has the rolling-origin consumer with genuinely
+varying per-fold state it was waiting for. It also earned `assert_dtypes` and
+the impute surface their first real severe consumers, and re-fired the item-13
+and item-20 second-project triggers. The `air_quality` backlog is now the open
+queue — the next step is to serve items 22–26 in observed-pain order), a goal
 evaluation of the whole toolkit, the friction backlogs from the real-data
 projects, and the settled-decision rationales this file's notes point to.
 Read it before starting new library work — and note its
