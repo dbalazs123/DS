@@ -54,7 +54,7 @@ def test_trim_raw_drops_junk_columns_and_empty_rows() -> None:
 def test_trim_raw_rejects_unexpected_row_count() -> None:
     pipeline = _load_pipeline()
     df = _measurement_frame(pipeline, 5)
-    with pytest.raises(ValueError, match="expected 2 data rows"):
+    with pytest.raises(ValueError, match="Expected 2 rows"):
         pipeline.trim_raw(df, expected_rows=2)
 
 
@@ -97,7 +97,7 @@ def test_build_time_axis_rejects_duplicate_hours() -> None:
             "time": ["18.00.00", "18.00.00"],
         }
     )
-    with pytest.raises(ValueError, match="duplicated hours"):
+    with pytest.raises(ValueError, match="Duplicated values in 'timestamp'"):
         pipeline.build_time_axis(df)
 
 
@@ -149,16 +149,15 @@ def test_pipeline_end_to_end(tmp_path: Path) -> None:
     assert {"ridge", "same_hour_yesterday", "train_mean"} <= set(comparison.index)
     assert {"mae", "rmse", "r2"} <= set(comparison.columns)
 
-    # Five rolling-origin folds, plus the would-be per-fold fitted state the
-    # single up-front transform cannot re-fit (the item recorded in
-    # ROADMAP.md): the impute medians and scale centre genuinely vary.
+    # Five rolling-origin folds, each re-fitting the transform plan on its own
+    # expanding window via make_pipeline (ROADMAP item 22 — the per-fold
+    # fitted state genuinely varies here, so the leak the shortcut carried is
+    # closed rather than merely measured). The window grows fold to fold.
     cv_scores = pd.read_csv(out / "cv_folds.csv", index_col=0)
     assert len(cv_scores) == 5
     assert {"mae", "rmse", "r2", "train_size", "test_size"} <= set(cv_scores.columns)
-    fit_state = pd.read_csv(out / "cv_fold_fit_state.csv", index_col=0)
-    assert len(fit_state) == 5
-    assert fit_state["nox_gt_median"].nunique() > 1
-    assert fit_state["pt08_s1_co_center"].nunique() > 1
+    assert cv_scores["train_size"].is_monotonic_increasing
+    assert cv_scores["train_size"].nunique() == 5
 
     # The missing-value triage evidence: the report ranks the 90%-missing
     # column first, and the correlation table carries the near-identity that
@@ -178,7 +177,6 @@ def test_pipeline_end_to_end(tmp_path: Path) -> None:
         "summary.csv",
         "top_correlations.csv",
         "cv_folds.csv",
-        "cv_fold_fit_state.csv",
         "model_comparison.csv",
         "model_comparison.png",
         "residuals.png",

@@ -57,6 +57,7 @@ from ds.validation import (
     assert_in_range,
     assert_in_set,
     assert_no_nulls,
+    assert_unique,
     check_schema,
     require_columns,
 )
@@ -113,7 +114,8 @@ def build_time_axis(df: pd.DataFrame) -> pd.DataFrame:
     needs one sortable datetime column. Each month is stamped to its first
     day. The assembled axis must be unique: a duplicated (year, month) pair
     would mean corrupted input, and sorting would silently interleave the
-    duplicates.
+    duplicates — the ``assert_unique`` guard (ROADMAP item 24; this and
+    air_quality are its two consumers) that raw ``to_datetime`` does not do.
 
     Args:
         df: Frame with ``year`` (int) and ``month`` (full English month name)
@@ -123,15 +125,13 @@ def build_time_axis(df: pd.DataFrame) -> pd.DataFrame:
         A new frame with a ``date`` datetime column, sorted chronologically.
 
     Raises:
-        ValueError: If any (year, month) pair occurs more than once.
+        DataValidationError: If any (year, month) pair occurs more than once.
     """
     out = df.copy()
     out["date"] = pd.to_datetime(
         out["year"].astype(str) + "-" + out["month"].astype(str), format="%Y-%B"
     )
-    if not out["date"].is_unique:
-        duplicated = out.loc[out["date"].duplicated(), "date"].dt.strftime("%Y-%m")
-        raise ValueError(f"duplicated months in the time axis: {duplicated.tolist()}")
+    assert_unique(out, "date")
     return out.sort_values("date").reset_index(drop=True)
 
 

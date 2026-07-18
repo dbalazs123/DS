@@ -41,6 +41,32 @@ def require_columns(df: pd.DataFrame, columns: Iterable[str]) -> pd.DataFrame:
     return df
 
 
+def assert_row_count(df: pd.DataFrame, expected: int) -> pd.DataFrame:
+    """Assert that ``df`` has exactly ``expected`` rows.
+
+    A boundary guard for the silent-parse class of failure: a malformed read
+    can yield a frame that *looks* healthy while being the wrong length —
+    trailing all-empty rows kept as rows of NaN, or two rows quietly merged
+    into one — and only a check against the published/expected size catches
+    it. The comparison is a single line; what this adds is the stage's uniform
+    :class:`DataValidationError`, so a boundary check fails like every other
+    guard.
+
+    Args:
+        df: The DataFrame to check.
+        expected: The exact number of rows ``df`` must have.
+
+    Returns:
+        The same DataFrame, to support fluent chaining.
+
+    Raises:
+        DataValidationError: If ``df`` does not have exactly ``expected`` rows.
+    """
+    if len(df) != expected:
+        raise DataValidationError(f"Expected {expected} rows, got {len(df)}")
+    return df
+
+
 def assert_no_nulls(df: pd.DataFrame, columns: Iterable[str] | None = None) -> pd.DataFrame:
     """Assert that the given columns (or the whole frame) contain no nulls.
 
@@ -140,6 +166,36 @@ def assert_in_set(df: pd.DataFrame, column: str, allowed: Iterable[object]) -> p
     return df
 
 
+def assert_unique(df: pd.DataFrame, column: str) -> pd.DataFrame:
+    """Assert that a column's values are all distinct.
+
+    The guard raw :func:`pandas.to_datetime` (and friends) does not do: a
+    duplicated key — a repeated timestamp on a time axis, a re-used id —
+    means corrupted input, and a later ``sort_values`` would silently
+    interleave the duplicates rather than fail loudly. Nulls count as values
+    (two nulls are a duplicate); pair with :func:`assert_no_nulls` when a key
+    must also be non-null.
+
+    Args:
+        df: The DataFrame to check.
+        column: Name of the column whose values must be unique.
+
+    Returns:
+        The same DataFrame, to support fluent chaining.
+
+    Raises:
+        KeyError: If ``column`` is not present.
+        DataValidationError: If any value in ``column`` occurs more than once.
+    """
+    if column not in df.columns:
+        raise KeyError(column)
+    series = df[column]
+    if not series.is_unique:
+        duplicated = series[series.duplicated()].unique().tolist()
+        raise DataValidationError(f"Duplicated values in {column!r}: {duplicated}")
+    return df
+
+
 def _dtype_matches(actual: object, expected: str | type) -> bool:
     """Return whether a pandas dtype matches an expected dtype spec."""
     try:
@@ -224,6 +280,8 @@ __all__ = [
     "assert_in_range",
     "assert_in_set",
     "assert_no_nulls",
+    "assert_row_count",
+    "assert_unique",
     "check_schema",
     "require_columns",
 ]

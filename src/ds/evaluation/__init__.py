@@ -152,6 +152,7 @@ def cross_validate_by_time(
     time_column: str,
     target: str,
     make_model: Callable[[], Any],
+    make_pipeline: Callable[[pd.DataFrame], Pipeline] | None = None,
     n_splits: int = 5,
     metrics_fn: MetricsFunction = regression_metrics,
 ) -> pd.DataFrame:
@@ -167,13 +168,28 @@ def cross_validate_by_time(
     feature matrix.
 
     Args:
-        df: The modeling frame (features + target + time column).
+        df: The modeling frame (features + target + time column). With
+            ``make_pipeline`` set, pass the frame *before* the fit-based
+            transforms — the point is to re-fit them inside each fold.
         time_column: Column to order by.
         target: Name of the target column.
         make_model: Zero-argument factory returning a **fresh** unfitted
             model with scikit-learn's ``fit``/``predict`` protocol (e.g.
             ``lambda: LinearRegression()``); a new instance is built per fold
             so no state leaks between folds.
+        make_pipeline: Factory fitting a **fresh** transform
+            :class:`~ds.pipeline.Pipeline` on a training frame — typically
+            ``lambda frame: fit_pipeline(frame, plan)`` with the same plan the
+            training run uses. Called once per fold with that fold's expanding
+            training window (time and target columns included); the fitted
+            pipeline is applied to both fold halves before the model sees
+            them, so every fold's statistics (imputation fills, scale
+            parameters, learned category vocabularies, …) are learned from its
+            own past only — the rolling-origin twin of
+            :func:`cross_validate_kfold`'s parameter. Without it, handing this
+            function an already-transformed frame leaks: each fold's future
+            test block has influenced the statistics its training rows were
+            transformed with.
         n_splits: Number of folds (each fold adds one more block of history).
         metrics_fn: Fold-scoring function; defaults to
             :func:`regression_metrics` (use :func:`classification_metrics`
@@ -204,6 +220,10 @@ def cross_validate_by_time(
     for fold in range(1, n_splits + 1):
         train = ordered.iloc[: boundaries[fold]]
         test = ordered.iloc[boundaries[fold] : boundaries[fold + 1]]
+        if make_pipeline is not None:
+            pipeline = make_pipeline(train)
+            train = pipeline.apply(train)
+            test = pipeline.apply(test)
         model = make_model()
         model.fit(train.drop(columns=[time_column, target]), train[target])
         predictions = model.predict(test.drop(columns=[time_column, target]))
