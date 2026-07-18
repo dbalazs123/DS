@@ -3,22 +3,29 @@
 A thin, format-aware layer over pandas that infers the format from the file
 extension so calling code never branches on ``.csv`` vs ``.parquet``. The
 :func:`load_raw` / :func:`save_processed` pair builds on it to resolve paths
-against the project's ``data/`` layout (see :mod:`ds.config`), and the
-:func:`save_params` / :func:`load_params` pair persists the ``fit_*``
-parameter dataclasses as JSON so a pipeline's fitted state can be saved
-alongside its model and reloaded in a later run.
+against the project's ``data/`` layout (see :mod:`ds.config`),
+:func:`fetch_dataset` downloads a raw file into that layout and verifies it
+against a pinned checksum, and the :func:`save_params` / :func:`load_params`
+pair persists the ``fit_*`` parameter dataclasses as JSON so a pipeline's
+fitted state can be saved alongside its model and reloaded in a later run.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
-from collections.abc import Mapping
+import urllib.error
+import urllib.request
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol, Self, TypeVar
 
 import pandas as pd
 
 from ds.config import Settings, get_settings
+from ds.logging import get_logger
+
+logger = get_logger(__name__)
 
 SUPPORTED_SUFFIXES = (".csv", ".tsv", ".parquet", ".json", ".jsonl")
 
@@ -233,9 +240,84 @@ def save_processed(
     return save_table(df, _resolve_within(resolved.processed_dir, name), **kwargs)
 
 
+def fetch_dataset(
+    name: str,
+    urls: Sequence[str],
+    *,
+    sha256: str,
+    settings: Settings | None = None,
+) -> Path:
+    """Download a raw dataset into the raw-data directory and verify its checksum.
+
+    Tries each URL in ``urls`` in order and checks the downloaded bytes against
+    ``sha256`` before writing them, so a mirror that has silently drifted fails
+    loudly rather than parsing strangely downstream. Mirrors are ordered by
+    preference; the first that both responds and matches the checksum wins.
+
+    A cached copy already on disk is **re-verified** against ``sha256`` rather
+    than trusted: a partial or corrupted earlier download would otherwise poison
+    every later run. A cached file that fails the check is deleted and
+    re-downloaded.
+
+    The checksum is required by design. This helper exists for the
+    multiple-personal-mirror case (a dataset whose canonical host is not
+    reachable from every network), where pinning the exact bytes is the whole
+    point; a plain "download if absent" with no pin is a few lines a caller can
+    write inline.
+
+    ``sha256``/``joblib`` note: only the *bytes* are trusted here, and only when
+    they match the pin — nothing in the payload is executed. Loading a model
+    object is a separate, higher trust boundary (see
+    :func:`ds.modeling.persistence.load_model`).
+
+    Args:
+        name: File name to write under ``settings.raw_dir``. Must be a bare name
+            or relative path that stays inside the raw-data directory.
+        urls: One or more mirror URLs to try in order, each serving the same
+            byte-identical file.
+        sha256: The pinned lowercase hex SHA-256 digest of the file's bytes.
+        settings: Settings to resolve ``raw_dir`` from; defaults to
+            :func:`ds.config.get_settings`.
+
+    Returns:
+        Path to the verified local copy of the dataset.
+
+    Raises:
+        ValueError: If ``name`` resolves outside the raw-data directory, or if a
+            reachable mirror served bytes that fail the pinned checksum.
+        urllib.error.URLError: If every mirror was unreachable.
+    """
+    resolved = settings or get_settings()
+    destination = _resolve_within(resolved.raw_dir, name)
+    if destination.exists():
+        if hashlib.sha256(destination.read_bytes()).hexdigest() == sha256:
+            return destination
+        logger.warning("Cached %s fails its checksum; re-downloading", destination)
+        destination.unlink()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    last_error: Exception | None = None
+    for url in urls:
+        logger.info("Downloading %s -> %s", url, destination)
+        try:
+            with urllib.request.urlopen(url) as response:
+                payload: bytes = response.read()
+        except OSError as exc:  # urllib.error.URLError subclasses OSError
+            last_error = exc
+            continue
+        if hashlib.sha256(payload).hexdigest() == sha256:
+            destination.write_bytes(payload)
+            return destination
+        logger.warning("Mirror %s served a file that fails the pinned checksum", url)
+        last_error = ValueError(f"checksum mismatch from {url}")
+    if isinstance(last_error, ValueError):
+        raise last_error
+    raise urllib.error.URLError(f"no mirror reachable for {name}") from last_error
+
+
 __all__ = [
     "SUPPORTED_SUFFIXES",
     "FittedParams",
+    "fetch_dataset",
     "load_params",
     "load_raw",
     "load_table",

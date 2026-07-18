@@ -41,8 +41,6 @@ before trusting the download.
 
 from __future__ import annotations
 
-import hashlib
-import urllib.request
 from pathlib import Path
 
 import matplotlib
@@ -63,7 +61,7 @@ from ds.evaluation import (
     per_class_metrics,
 )
 from ds.features import fit_one_hot_categories, fit_scale_params, fit_topk_categories
-from ds.io import load_raw, save_params, save_processed
+from ds.io import fetch_dataset, load_raw, save_params, save_processed
 from ds.modeling.baseline import fit_baseline
 from ds.modeling.persistence import load_model, save_model
 from ds.modeling.tabular import split_features_target, train_test_split_random
@@ -89,9 +87,8 @@ logger = get_logger(__name__)
 # The UCI archive (dataset 2) is not reachable from every network, so the fetch
 # uses a GitHub mirror of the original adult.data training split — same 15
 # columns, whitespace-padded values, "?" sentinels and CRLF line endings — and
-# verifies the checksum below before trusting the download. (A second
-# byte-identical mirror would slot straight into this tuple; one plus the pin
-# matches the seaborn-mirror projects' fetch, the checksum matches air_quality.)
+# ds.io.fetch_dataset verifies the checksum below before trusting the download.
+# (A second byte-identical mirror would slot straight into this tuple.)
 DATA_URLS = ("https://raw.githubusercontent.com/dsrscientist/dataset1/master/census_income.csv",)
 RAW_NAME = "census_income.csv"
 RAW_SHA256 = "833cc71e1409363daa6a882d48d582c2e043da10e712e8fa8e7b50833cd5c15f"
@@ -146,13 +143,11 @@ _LABELS = {0: "<=50K", 1: ">50K"}
 
 
 def fetch_raw(settings: Settings) -> Path:
-    """Download the census CSV into ``settings.raw_dir`` and verify it.
+    """Download the census CSV into ``settings.raw_dir`` and verify its checksum.
 
-    Tries each mirror in :data:`DATA_URLS` in order and checks the download
-    against :data:`RAW_SHA256` — the mirror is a personal repository, so a
-    silently drifted copy must fail loudly, not parse strangely. A cached copy
-    is re-verified rather than trusted (a partial earlier download would
-    otherwise poison every later run).
+    A thin binding of this project's dataset (mirrors, filename, pinned digest)
+    to :func:`ds.io.fetch_dataset`, which does the multi-mirror download,
+    checksum verification and cache re-verify (ROADMAP item 27's shared dance).
 
     Args:
         settings: Resolves the raw-data directory.
@@ -164,30 +159,7 @@ def fetch_raw(settings: Settings) -> Path:
         ValueError: If no mirror serves a file matching the pinned checksum.
         urllib.error.URLError: If every mirror is unreachable.
     """
-    destination = settings.raw_dir / RAW_NAME
-    if destination.exists():
-        if hashlib.sha256(destination.read_bytes()).hexdigest() == RAW_SHA256:
-            return destination
-        logger.warning("Cached %s fails its checksum; re-downloading", destination)
-        destination.unlink()
-    settings.raw_dir.mkdir(parents=True, exist_ok=True)
-    last_error: Exception | None = None
-    for url in DATA_URLS:
-        logger.info("Downloading %s -> %s", url, destination)
-        try:
-            with urllib.request.urlopen(url) as response:
-                payload = response.read()
-        except OSError as exc:  # URLError subclasses OSError
-            last_error = exc
-            continue
-        if hashlib.sha256(payload).hexdigest() == RAW_SHA256:
-            destination.write_bytes(payload)
-            return destination
-        logger.warning("Mirror %s served a file that fails the pinned checksum", url)
-        last_error = ValueError(f"checksum mismatch from {url}")
-    if isinstance(last_error, ValueError):
-        raise last_error
-    raise urllib.error.URLError(f"no mirror reachable for {RAW_NAME}") from last_error
+    return fetch_dataset(RAW_NAME, DATA_URLS, sha256=RAW_SHA256, settings=settings)
 
 
 def decode_sentinels(df: pd.DataFrame) -> pd.DataFrame:

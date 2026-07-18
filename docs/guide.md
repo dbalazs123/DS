@@ -86,6 +86,23 @@ df = load_raw("sales.csv")            # reads <data_dir>/raw/sales.csv
 save_processed(df, "sales.parquet")   # writes <data_dir>/processed/sales.parquet
 ```
 
+When a dataset's canonical host isn't reachable from every network, pin exact
+bytes on personal mirrors and fetch through `fetch_dataset`: it tries each
+mirror in order, verifies the download's SHA-256 against the pin before writing
+(a drifted mirror fails loudly), and re-verifies a cached copy so a partial
+earlier download can't poison later runs. The checksum is required — that
+verification is the whole reason to reach for it over a plain download.
+
+```python
+from ds.io import fetch_dataset
+
+path = fetch_dataset(
+    "census.csv",
+    ("https://mirror-a.example/census.csv", "https://mirror-b.example/census.csv"),
+    sha256="833cc71e…",   # pinned digest of the exact bytes
+)
+```
+
 **Sentinel-coded missingness — decode it before you validate or explore.** Some
 files spell a gap as a legal-looking number (`-200`, `-999`, `9999`). Left in
 place it is invisible: `missing_value_report` counts zero missing,

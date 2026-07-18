@@ -148,6 +148,14 @@ Things that cost a round-trip to discover; save yourself the CI failure:
   path-traversal discipline as `ds new`'s slug.
 - **Reuse across stages** rather than duplicating (e.g. `ds.viz` plots call
   `ds.eda` / `ds.evaluation` functions).
+- **Verified raw fetch lives in `ds.io.fetch_dataset`** (checksum required,
+  keyword-only; cache re-verify is inside the helper). Real-data projects whose
+  canonical host isn't reachable everywhere download through it against pinned
+  personal mirrors — don't re-hand-roll the multi-mirror/sha256/cache-reverify
+  dance in a project. The seaborn-mirror projects (`titanic`/`nyc_taxis`/
+  `diamonds`) deliberately keep their plain un-pinned "download if absent" (a few
+  inline lines, below the aliasing bar); folding them in is parked until one
+  actually pulls an optional-checksum widening (see ROADMAP item 27).
 - **Sanitize user-facing input paths.** `ds new`'s slug collapses any
   non-`[a-z0-9]` run to `_` precisely so a name like `../x` can't escape
   `projects/` — keep that discipline for anything that builds a filesystem path.

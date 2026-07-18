@@ -12,7 +12,7 @@ working set of the most-reached-for helpers. Built out so far:
 
 | Stage | Module | Status |
 |-------|--------|--------|
-| Acquire | `ds.io` | `load_table`, `save_table` (csv/tsv/parquet/json/jsonl), `load_raw`, `save_processed`, `save_params`/`load_params` (fitted-parameter JSON) |
+| Acquire | `ds.io` | `load_table`, `save_table` (csv/tsv/parquet/json/jsonl), `load_raw`, `save_processed`, `fetch_dataset` (checksum-verified multi-mirror download), `save_params`/`load_params` (fitted-parameter JSON) |
 | Validate | `ds.validation` | `require_columns`, `assert_row_count`, `assert_no_nulls`, `assert_in_range`, `assert_in_set`, `assert_unique`, `assert_dtypes`, `check_schema` |
 | Clean | `ds.preprocessing` | `standardize_column_names`, `drop_constant_columns`, `drop_duplicate_rows`, `coerce_dtypes`, `flag_outliers`, `clip_outliers`, `impute_missing` + split-safe pairs `fit_outlier_bounds`/`apply_flag_outliers`/`apply_clip_outliers`, `fit_impute_values`/`apply_impute_missing` |
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations` |
@@ -48,7 +48,7 @@ extending recent momentum. Verdicts, and what they imply:
   friction backlogs below are the queue (the first six lists — `nyc_taxis`,
   `titanic`, `flights`, `diamonds`, `sms_spam` and `air_quality` — are fully
   dispatched; P14 ran the seventh demand loop (`adult_income`) and refilled the
-  queue with items 27–29, pending a P15 that serves them).
+  queue with items 27–29, and P15 served them, so the queue is empty again).
 - **Fit-once / score-later** — *stopped one step short of its own goal;
   since closed (P2).* Fitted parameters and the `Pipeline` persist as strict
   JSON, but at evaluation time the fitted **model** could not be persisted at
@@ -383,11 +383,67 @@ orphaned NLP toe-dip. The lesson is the ordering rule above: demand first.
   demand-first rule the project promotes nothing itself; its friction list is
   the new backlog below.
 
-**Next up:** the seventh demand loop is done (P14), so the queue is refilled —
-the next step is a **P15** serving the `adult_income` backlog (items 27–29) in
-observed-pain order, led by the checksum-verified multi-mirror fetch helper
-(air_quality's trigger has now fired). Deprioritized until a project pulls them:
-more EDA helpers, more cookbook recipes, more CLI.
+- **P15 — serve the `adult_income` backlog: DONE.** Items 27–29 in observed-pain
+  order — one served, two resolved without a build (each rationale inline in the
+  backlog below), the serve dogfooded by `projects/air_quality` **and**
+  `projects/adult_income` in the same change:
+  - `ds.io.fetch_dataset` (item 27, the headline — the fetch-helper trigger fired
+    on its second verbatim consumer) — `fetch_dataset(name, urls, *, sha256,
+    settings=None)` downloads a raw file into `settings.raw_dir` trying each mirror
+    in order, verifies the payload's sha256 before writing, and re-verifies (not
+    trusts) a cached copy so a partial earlier download can't poison later runs —
+    exactly the ~25-line dance both projects had hand-rolled, now one library call.
+    The two recorded open questions were resolved with evidence, not a guess: the
+    checksum is **required** (keyword-only, no default) because the trigger fired on
+    the *checksum-verified multi-mirror* shape specifically — the seaborn-mirror
+    projects (`titanic`/`nyc_taxis`/`diamonds`) fetch with a plain, un-pinned
+    "download if absent" that is a few inline lines below the aliasing bar, so they
+    were deliberately **not** folded in (making the checksum optional purely to
+    absorb them would have built surface with no demand pulling it, and pinning a
+    live upstream repo is a maintenance commitment nothing asked for); and the cache
+    re-verify lives **inside** the helper, because re-hashing a cached copy and
+    unlinking on mismatch is part of what "verified fetch" means and leaving it to
+    the caller would force every caller to re-implement the guarantee. Stdlib only
+    (`urllib`/`hashlib`), so no dependency was added; a `ds.io` addition, so
+    `tests/test_public_api.py` (the top-level surface) is untouched. It also hardens
+    the dance it absorbed: the destination is resolved through `ds.io`'s
+    `_resolve_within` path guard, so a traversing `name` is refused (the projects
+    joined the raw dir directly). Dogfood proof by deletion: both projects deleted
+    their hand-rolled `fetch_raw` body — each now keeps only its data (mirror tuple,
+    filename, pinned digest) and a one-line `fetch_raw` that binds them to
+    `fetch_dataset` — and both end-to-end tests pass unchanged (held-out metrics and
+    every persisted artifact equivalent, because the verified bytes are identical).
+    The seaborn projects' un-checksummed fetch is recorded as the natural future
+    consumer that would justify an *optional*-checksum widening only when a project
+    actually pulls it.
+  - Item 28 (a string `"?"` sentinel decoded by hand — air_quality item 26's
+    second-sentinel trigger, string flavor) — **resolved as a documented one-liner,
+    not built**, now that two differently-typed sentinels are on record. The shared
+    part across −200 (numeric) and `"?"` (string) is exactly the one-line
+    `df[columns].replace(sentinel, np.nan)`, which carries no logic to share, while
+    the load-bearing *lesson* (the sentinel is invisible to
+    `missing_value_report`/`assert_in_range`/`summarize` until decoded, and the
+    decode must run before any of them sees the frame) is already the Guide's
+    Acquire-section gotcha. A `mask_sentinels(df, columns, sentinel)` would alias
+    that one-liner behind a new name — the item-13/15/20/26 precedent — so it stays
+    documented; `adult_income` keeps its one-line `decode_sentinels`. A **third**
+    differently-typed sentinel would force the thin helper.
+  - Item 29 (`ds.eda` has no categorical↔target association view) — **struck /
+    parked, not built.** Unlike the fetch and sentinel dances, this gap was worked
+    around by *thinking* (domain knowledge picked the categorical features), not by
+    hand-rolled code, so there is nothing to promote and no consumer to document at;
+    the candidate shape is genuinely open (Cramér's-V / mutual-information ranker vs
+    a positive-rate-by-level group table vs a `bin_column`-style profiler). Trigger
+    recorded: a second heavily-categorical project that actually hand-rolls the
+    groupby, which also decides the shape. Do not build speculatively.
+
+**Next up:** P15 served the `adult_income` backlog (items 27–29), so the demand
+queue is empty again — the next step is an **eighth demand loop**: a new
+real-data project, chosen by the grep-driven rule (grep which library surfaces
+still have no real consumer and pick the data shape that stresses the thinnest
+cluster by absence), whose friction regenerates the backlog. Deprioritized until
+a project pulls them: more EDA helpers (item 29's categorical↔target view is
+parked here), more cookbook recipes, more CLI.
 
 ## Friction backlog (from `projects/nyc_taxis`)
 
@@ -903,55 +959,62 @@ surface both have triggers that were *already recorded* by earlier projects and
 now fire on their agreed second occurrence. Numbering continues from the
 `air_quality` list; in observed-pain order:
 
-27. **Checksum-verified multi-mirror fetch is hand-rolled a second time — the
-    fetch-helper trigger fires.** `adult_income`'s `fetch_raw` is a ~25-line
-    near-verbatim copy of `air_quality`'s: download into `settings.raw_dir`, try
-    each mirror in a tuple, verify the payload's sha256 against a pinned digest,
-    re-verify (not trust) a cached copy so a partial earlier download can't
-    poison later runs. `air_quality` recorded exactly this trigger ("if a second
-    mirror-fetched project repeats the dance, that is the trigger for a fetch
-    helper"), and it has now fired: two projects carry the same dance with only
-    the URL tuple, filename and checksum varying — all *data*, not code. This is
-    above the helper bar (a second verbatim consumer, not a one-liner), and is
-    the backlog's strongest build candidate. Candidate shape: an
-    `ds.io.fetch_dataset(name, urls, *, sha256, settings)` (or
-    `download_verified`) returning the verified local path. Honest open
-    questions for the build: whether the checksum is *required* (the two
-    consumers that need it are the non-seaborn mirrors) or *optional* (so the
-    seaborn-mirror projects — `titanic`/`nyc_taxis`/`diamonds`, which fetch with
-    a plain "download if absent" and no pin — could adopt it too), and whether
-    the cache re-verify belongs inside or is left to the caller. Serve in P15.
-28. **A string `"?"` missing-sentinel is decoded by hand — air_quality item
-    26's second-sentinel trigger fires, in a new flavor.** Three categorical
-    columns (`workclass`/`occupation`/`native_country`) tag an unknown with a
-    literal `"?"`; `decode_sentinels` is the one-line `df[cols].replace("?",
-    np.nan)` that makes the gaps visible to `missing_value_report` and fillable
-    by the mode-impute step. Item 26 (numeric −200 sentinels) was resolved by
-    documentation with the trigger "revisit if a second sentinel-coded project
-    repeats it"; `adult_income` is that project — but the sentinel is a *string*
-    here, not a number, which is itself the finding: the recurring need is
-    "replace a per-project sentinel *value* in named columns with NaN", and the
-    value (−200 vs `"?"`), its type, and the target columns differ every time,
-    so the shared part is exactly the one-line `replace` — which spells it as
-    clearly as any wrapper would. Leaning **stays a documented one-liner / at
-    most a thin `mask_sentinels(df, columns, sentinel)`**: the *lesson* item 26
-    documented (the sentinel is invisible to validation/EDA until decoded, and
-    the decode must run before any of them sees the frame) is the load-bearing
-    part and is already in the Guide; the decode itself carries no logic to
-    share. Decide the thin-helper-vs-stays-documented question in P15 now that
-    two differently-typed sentinels are on the record; a third would settle it.
-29. **`ds.eda` has no categorical↔target association view.** `top_correlations`
-    is numeric-only, so on a dataset whose strongest predictors are categorical
-    (marital status, occupation, education) the explore stage cannot rank them —
-    the feature choices here leaned on domain knowledge and the confusion
-    structure instead. Recorded, but **below the bar and struck for now**: no
-    workaround was hand-rolled (unlike the fetch and sentinel dances, this gap
-    was *worked around by thinking*, not by code), so there is nothing to promote
-    yet, and the candidate shape is genuinely open (a Cramér's-V / mutual-
-    information ranker vs a positive-rate-by-level group table vs a
-    `bin_column`-style categorical profiler). Trigger: a second heavily-
-    categorical project that actually hand-rolls the groupby, which also decides
-    the shape.
+27. ~~**Checksum-verified multi-mirror fetch is hand-rolled a second time — the
+    fetch-helper trigger fires.**~~ — **served in P15**: `ds.io.fetch_dataset(name,
+    urls, *, sha256, settings=None)`, the recorded candidate shape, returning the
+    verified local path. `adult_income`'s `fetch_raw` was a ~25-line near-verbatim
+    copy of `air_quality`'s (download into `settings.raw_dir`, try each mirror,
+    verify the payload's sha256, re-verify not trust a cached copy so a partial
+    earlier download can't poison later runs) — two projects carrying the same
+    dance with only the URL tuple, filename and checksum varying, all *data* not
+    code, above the helper bar exactly as `air_quality` predicted ("if a second
+    mirror-fetched project repeats the dance, that is the trigger"). The two open
+    questions resolved with evidence: the checksum is **required** (keyword-only) —
+    the trigger fired on the *checksum-verified multi-mirror* shape, and the
+    seaborn-mirror projects' plain un-pinned "download if absent" is a few inline
+    lines below the aliasing bar, so they were **not** folded in (an optional
+    checksum purely to absorb them would build surface with no demand, and pinning a
+    live upstream repo is an unasked-for maintenance commitment); and the cache
+    re-verify lives **inside** the helper, because it is part of what "verified
+    fetch" means and a caller-side re-verify would be re-implemented at every call
+    site. Stdlib only (`urllib`/`hashlib`) — no dependency added; a `ds.io`
+    addition, so `tests/test_public_api.py` is untouched. The helper also hardens
+    the dance: the destination resolves through `_resolve_within`, refusing a
+    traversing `name` (the projects joined the raw dir directly). Dogfood proof by
+    deletion: both `air_quality` and `adult_income` deleted their hand-rolled
+    `fetch_raw` body — each keeps only its data plus a one-line `fetch_raw` binding
+    it to `fetch_dataset` — and both end-to-end tests pass with held-out metrics and
+    persisted artifacts equivalent (the verified bytes are identical). The seaborn
+    projects' un-checksummed fetch stays recorded as the natural future consumer
+    that would justify an optional-checksum widening only when one actually pulls it.
+28. ~~**A string `"?"` missing-sentinel is decoded by hand — air_quality item
+    26's second-sentinel trigger fires, in a new flavor.**~~ — **resolved in P15 as
+    a documented one-liner, not built**, now that two differently-typed sentinels
+    are on record (numeric −200, string `"?"`). Three categorical columns
+    (`workclass`/`occupation`/`native_country`) tag an unknown with a literal `"?"`;
+    `decode_sentinels` is the one-line `df[cols].replace("?", np.nan)` that makes
+    the gaps visible to `missing_value_report` and fillable by the mode-impute step.
+    The recurring need is "replace a per-project sentinel *value* in named columns
+    with NaN", but the value (−200 vs `"?"`), its type, and the target columns
+    differ every time, so the shared part is exactly the one-line `replace` — which
+    spells it as clearly as any wrapper would, while the load-bearing *lesson* item
+    26 documented (the sentinel is invisible to validation/EDA until decoded, and
+    the decode must run before any of them sees the frame) is already the Guide's
+    Acquire gotcha. A `mask_sentinels(df, columns, sentinel)` would alias the
+    one-liner behind a new name (the item-13/15/20/26 precedent), so it stays
+    documented; the project keeps its one-line `decode_sentinels`. A **third**
+    differently-typed sentinel would force the thin helper.
+29. ~~**`ds.eda` has no categorical↔target association view.**~~ — **struck /
+    parked in P15, not built.** `top_correlations` is numeric-only, so on a dataset
+    whose strongest predictors are categorical (marital status, occupation,
+    education) the explore stage cannot rank them — the feature choices here leaned
+    on domain knowledge and the confusion structure instead. But unlike the fetch
+    and sentinel dances this gap was worked around by *thinking*, not by hand-rolled
+    code, so there is nothing to promote and no consumer to document at, and the
+    candidate shape is genuinely open (a Cramér's-V / mutual-information ranker vs a
+    positive-rate-by-level group table vs a `bin_column`-style categorical
+    profiler). Trigger: a second heavily-categorical project that actually
+    hand-rolls the groupby, which also decides the shape. Not built speculatively.
 
 Notes from the same run, for the record:
 
