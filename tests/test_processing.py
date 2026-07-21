@@ -440,6 +440,36 @@ def test_add_lagged_features_rejects_bad_lags() -> None:
         add_lagged_features(df, "missing", [1])
 
 
+def test_add_lagged_features_grouped_never_crosses_entity_boundary() -> None:
+    # Two stacked series; a by-position lag would read series "a"'s tail as
+    # series "b"'s history. Grouping must take each series' lags independently.
+    df = pd.DataFrame({"g": ["a", "a", "a", "b", "b", "b"], "y": [1, 2, 3, 10, 20, 30]})
+    out = add_lagged_features(df, "y", [1], group="g")
+    # Each group drops only its own single warm-up row (2 rows survive per group),
+    # and no lag value crosses from "a" into "b".
+    assert list(out["g"]) == ["a", "a", "b", "b"]
+    assert list(out["y"]) == [2, 3, 20, 30]
+    assert list(out["y_lag_1"]) == [1, 2, 10, 20]
+
+
+def test_add_lagged_features_grouped_accepts_multiple_keys_and_checks_presence() -> None:
+    df = pd.DataFrame(
+        {
+            "store": [1, 1, 2, 2],
+            "item": [1, 1, 1, 1],
+            "y": [5, 6, 7, 8],
+        }
+    )
+    out = add_lagged_features(df, "y", [1], group=["store", "item"], dropna=False)
+    # Warm-up row is the first of each (store, item) group -> NaN, never bled.
+    assert bool(pd.isna(out["y_lag_1"].iloc[0]))
+    assert bool(pd.isna(out["y_lag_1"].iloc[2]))
+    assert out["y_lag_1"].iloc[1] == 5
+    assert out["y_lag_1"].iloc[3] == 7
+    with pytest.raises(KeyError):
+        add_lagged_features(df, "y", [1], group=["store", "missing"])
+
+
 def test_text_features_counts_chars_words_and_word_length() -> None:
     df = pd.DataFrame({"msg": ["hi there world", "", "one"]})
     out = text_features(df, "msg")

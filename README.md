@@ -21,7 +21,7 @@ Requires [uv](https://docs.astral.sh/uv/) and Python ≥ 3.11.
 
 ```
 src/ds/        Reusable library, organized by DS process
-projects/      Individual analyses/experiments (see _example/, nyc_taxis/, titanic/, flights/, diamonds/, sms_spam/, air_quality/, adult_income/, sunspots/, bbc_news/)
+projects/      Individual analyses/experiments (see _example/, nyc_taxis/, titanic/, flights/, diamonds/, sms_spam/, air_quality/, adult_income/, sunspots/, bbc_news/, store_sales/)
 templates/     Copier template to scaffold new projects
 notebooks/     Exploratory notebooks
 data/          Datasets (git-ignored: raw/ interim/ processed/)

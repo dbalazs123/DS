@@ -7,6 +7,30 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `projects/store_sales`: tenth **real-data** project (P18 — the first on a
+  **panel**, i.e. multiple entities stacked in one frame), forecasting daily units
+  sold across a store × item subset (50 entities) of the classic "Store Item
+  Demand" dataset, 2013–2017. Chosen by the grep-driven demand rule for the data
+  *shape* no prior project had (all were single flat tables or single univariate
+  series), and its one library gap served in the same demand loop:
+  - `ds.features.add_lagged_features` gains a keyword-only `group=` parameter
+    (backlog item 32): lags taken *within* each entity via a grouped `shift`, so
+    history never bleeds across an entity boundary. The ungrouped path lagged by
+    row position over the whole frame, which on a panel silently read one entity's
+    tail as the next entity's history — a correctness bug, so it was fixed rather
+    than parked. `store_sales` is its first consumer, with a no-bleed test.
+
+  Full lifecycle on `ds` + scikit-learn: checksum-verified fetch
+  (`fetch_dataset`'s fifth consumer), boundary validation on the full 913k-row
+  file, panel selection + within-entity ordering, calendar + grouped-lag features,
+  a date-cutoff split (train 2013–2016, forecast 2017), a one-hot entity+calendar
+  plan (`fit_pipeline`), a pooled `LinearRegression`, and the held-out window
+  scored from the reloaded model. One-step held-out 2017: MAE 5.27 / r² 0.894,
+  beating the weekly-seasonal-naive (`sales_lag_7`, MAE 6.70) and naive-last
+  (`sales_lag_1`, MAE 7.99) references. The rest of the panel's single-series
+  friction (a date-cutoff split, a composite-key uniqueness check, a per-entity
+  rolling backtest) had clean inline workarounds and is recorded as backlog items
+  33–35, not built.
 - `tests/test_roadmap_size.py`: a size-budget gate that fails CI if `ROADMAP.md`
   grows past its line budget (currently 120), turning the "history goes to the
   archive, not the live roadmap" convention into an enforced invariant so the

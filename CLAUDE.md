@@ -39,7 +39,10 @@ in the **same** change.
 │                          #   sunspots = real-data autoregressive forecasting,
 │                          #   second forecasting project, non-calendar cycle;
 │                          #   bbc_news = real-data multiclass text topic
-│                          #   classification, second text project)
+│                          #   classification, second text project;
+│                          #   store_sales = real-data store x item daily-sales
+│                          #   panel, first multi-entity project — pulled
+│                          #   group-aware lags)
 ├── templates/project/     # copier template for new projects
 ├── notebooks/             # exploratory notebooks
 ├── data/                  # git-ignored: raw/ interim/ processed/
@@ -87,8 +90,8 @@ more detail).
 
 [`ROADMAP.md`](ROADMAP.md) is the **live** roadmap — kept small on purpose: the
 capability-per-stage table ("Where things stand"), the demand queue, and the
-working agreement. The plan of record (P1–P17, all done; **Release 0.2.0
-shipped**), the goal evaluation, the per-project friction backlogs (items 1–31),
+working agreement. The plan of record (P1–P18, all done; **Release 0.2.0
+shipped**), the goal evaluation, the per-project friction backlogs (items 1–35),
 and the settled-decision rationales this file's notes point to now live in
 [`ROADMAP_ARCHIVE.md`](ROADMAP_ARCHIVE.md) — split out so a session isn't forced
 to read ~100 KB of history to start work.
