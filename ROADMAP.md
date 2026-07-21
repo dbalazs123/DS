@@ -70,3 +70,10 @@ rolling recursive-forecast evaluation yet), more cookbook recipes, more CLI.
 - **Demand first:** new library work should trace to a friction item from a
   real project (or a P2/P3 plan-of-record item), not to a brainstormed
   candidate list.
+- **Keep this file live-only; history goes to the archive.** When a demand loop
+  completes, append its friction backlog and the completed plan-of-record entry
+  to [`ROADMAP_ARCHIVE.md`](ROADMAP_ARCHIVE.md), continuing the item numbering —
+  **not** here. `ROADMAP.md` holds only "Where things stand", the demand queue,
+  and this working agreement, so it stays cheap to read in full every session. A
+  size-budget test (`tests/test_roadmap_size.py`) fails CI if this file grows
+  past its line budget, so re-bloat can't slip in silently.

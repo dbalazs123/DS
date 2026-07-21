@@ -104,6 +104,15 @@ via demand loops, not trimmed. The ordering rule still governs: new library work
 should trace to a friction item from a real project, not a brainstormed candidate
 list.
 
+**Keep the split honest (this is the process, not a one-off).** New history goes
+to `ROADMAP_ARCHIVE.md`, never back into `ROADMAP.md`: when a demand loop
+completes, append its friction backlog and completed plan-of-record entry to the
+archive (continuing the item numbering), and update only the small live parts of
+`ROADMAP.md` (the "Where things stand" row and the demand queue). Likewise, don't
+grow *this* section with per-project narrative — that append-history reflex is
+what re-inflates the always-read files. A size-budget test
+(`tests/test_roadmap_size.py`) enforces the `ROADMAP.md` ceiling in CI.
+
 ## Engineering notes (hard-won gotchas)
 
 Things that cost a round-trip to discover; save yourself the CI failure:

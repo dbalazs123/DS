@@ -7,6 +7,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `tests/test_roadmap_size.py`: a size-budget gate that fails CI if `ROADMAP.md`
+  grows past its line budget (currently 120), turning the "history goes to the
+  archive, not the live roadmap" convention into an enforced invariant so the
+  file can't silently re-bloat over future demand loops. Pairs with a written
+  write-side rule in `ROADMAP.md`'s working agreement and `CLAUDE.md`'s roadmap
+  section (append new backlogs and completed plan-of-record entries to
+  `ROADMAP_ARCHIVE.md`, continuing the item numbering).
 - `projects/bbc_news`: ninth **real-data** project (P17 — the second **text**
   one), a multiclass topic classifier (business/entertainment/politics/sport/tech)
   over the 2,225 BBC News articles, with the text-feature surface it pulled served
