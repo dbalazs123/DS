@@ -45,7 +45,10 @@ in the **same** change.
 │                          #   group-aware lags;
 │                          #   bank_marketing = real-data term-deposit
 │                          #   subscription, first imbalanced / rare-event
-│                          #   project — pulled probabilistic eval metrics)
+│                          #   project — pulled probabilistic eval metrics;
+│                          #   mammography = real-data calcification screening,
+│                          #   second imbalanced project — tunes the operating
+│                          #   point, pulled choose_threshold + ROC/PR curves)
 ├── templates/project/     # copier template for new projects
 ├── notebooks/             # exploratory notebooks
 ├── data/                  # git-ignored: raw/ interim/ processed/

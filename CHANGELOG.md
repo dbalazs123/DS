@@ -7,6 +7,37 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `projects/mammography`: twelfth **real-data** project (P20 — the **second** on
+  an **imbalanced / rare-event** target), flagging the rare calcification (2.3%
+  positive) in 11,183 screened regions of the Woods mammography dataset. Chosen by
+  the grep-driven demand rule to give `probability_metrics` its second consumer;
+  because a screening programme has an **operating point** class reweighting can't
+  express, it fits a plain logistic regression and *tunes the threshold* — the
+  exact shape `bank_marketing` recorded as the trigger for the two surfaces it
+  parked, both now served in this loop:
+  - `ds.evaluation.choose_threshold(y_true, y_score, *, criterion, target)`
+    (backlog item 37): sweeps the precision–recall curve for the F1-optimal
+    threshold, or the cheapest one meeting a `target_precision` / `target_recall`
+    floor. Drops the trailing `(precision=1, recall=0)` point that
+    `precision_recall_curve` returns with no matching threshold (the classic
+    off-by-one) and raises when a target is unreachable.
+  - `ds.viz.plot_pr_curve` / `ds.viz.plot_roc_curve` (backlog item 38): the
+    operating-point *curve* with its no-skill baseline (prevalence line / chance
+    diagonal), pairing with `probability_metrics` as `plot_confusion_matrix` does
+    with `confusion_frame`.
+
+  Full lifecycle on `ds` + scikit-learn: checksum-verified fetch
+  (`fetch_dataset`'s seventh consumer, first no-header CSV via `names=`), boundary
+  validation with the six attributes' dtypes pinned, the quoted `'-1'`/`'1'` label
+  stripped and encoded, a one-step scale plan (`fit_pipeline`) re-fitted per fold,
+  stratified 5-fold CV, a plain (un-reweighted) model, and the held-out split
+  scored from the reloaded model — thresholds chosen on *train* scores, never the
+  test set. The model ranks calcifications well (ROC-AUC 0.97, average precision
+  0.65 vs the 0.02 prevalence floor), but at the naive 0.5 cut misses ~64% of them
+  (recall 0.37); tuning to an 80% recall budget lifts recall to 0.92 at a
+  precision cost (0.28). The rest of the friction (a validation-split threshold
+  calibration, an `apply_threshold` convenience, the keep-duplicates call) is
+  recorded as backlog items 39–41, not built.
 - `projects/bank_marketing`: eleventh **real-data** project (P19 — the first on
   an **imbalanced / rare-event** target), predicting term-deposit subscription on
   the 41,188-row UCI Bank Marketing dataset where only 11.3% say yes. Chosen by

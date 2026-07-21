@@ -13,6 +13,7 @@ import pytest
 from sklearn.linear_model import LinearRegression
 
 from ds.evaluation import (
+    choose_threshold,
     classification_metrics,
     compare_models,
     confusion_frame,
@@ -163,6 +164,65 @@ def test_probability_metrics_reward_ranking_over_hard_labels() -> None:
 def test_probability_metrics_single_class_raises() -> None:
     with pytest.raises(ValueError):
         probability_metrics([1, 1, 1], [0.2, 0.6, 0.9])
+
+
+def test_choose_threshold_f1_beats_default_on_low_scores() -> None:
+    # Two positives that both rank above the negatives but score below 0.5, so a
+    # default-0.5 cut finds neither. Tuning for F1 picks a threshold under the
+    # positives and recovers full recall — the rare-event operating-point story.
+    y_true = [0, 0, 0, 1, 1]
+    y_score = [0.05, 0.1, 0.2, 0.3, 0.4]
+    chosen = choose_threshold(y_true, y_score, criterion="f1")
+    assert chosen["threshold"] <= 0.3
+    assert chosen["recall"] == 1.0
+    assert chosen["f1"] == 1.0
+    default_recall = classification_metrics(y_true, [1 if s >= 0.5 else 0 for s in y_score])
+    assert default_recall["recall"] == 0.0
+
+
+def test_choose_threshold_target_recall_holds_the_floor() -> None:
+    # A screening budget: catch at least 90% of positives, as cheaply in
+    # precision as possible. The chosen point must clear the recall floor.
+    y_true = [0, 0, 1, 1, 1, 1]
+    y_score = [0.1, 0.35, 0.3, 0.5, 0.7, 0.9]
+    chosen = choose_threshold(y_true, y_score, criterion="target_recall", target=0.9)
+    assert chosen["recall"] >= 0.9
+
+
+def test_choose_threshold_target_precision_holds_the_floor() -> None:
+    y_true = [0, 0, 0, 1, 1, 1]
+    y_score = [0.1, 0.2, 0.45, 0.5, 0.7, 0.9]
+    chosen = choose_threshold(y_true, y_score, criterion="target_precision", target=1.0)
+    assert chosen["precision"] == 1.0
+
+
+def test_choose_threshold_aligns_precision_with_its_threshold() -> None:
+    # Guards the off-by-one: precision_recall_curve returns one more precision
+    # point than thresholds. A perfectly separating score set thresholded at its
+    # returned value must reproduce the exact precision/recall it reported.
+    y_true = [0, 0, 1, 1]
+    y_score = [0.1, 0.2, 0.8, 0.9]
+    chosen = choose_threshold(y_true, y_score, criterion="f1")
+    hard = classification_metrics(y_true, [1 if s >= chosen["threshold"] else 0 for s in y_score])
+    assert hard["precision"] == chosen["precision"]
+    assert hard["recall"] == chosen["recall"]
+
+
+def test_choose_threshold_unreachable_target_raises() -> None:
+    with pytest.raises(ValueError, match="no threshold reaches precision"):
+        choose_threshold([0, 0, 1], [0.9, 0.8, 0.1], criterion="target_precision", target=1.0)
+
+
+def test_choose_threshold_bad_criterion_and_target_raise() -> None:
+    with pytest.raises(ValueError, match="unknown criterion"):
+        choose_threshold([0, 1], [0.2, 0.8], criterion="nonsense")
+    with pytest.raises(ValueError, match="target in"):
+        choose_threshold([0, 1], [0.2, 0.8], criterion="target_recall")
+
+
+def test_choose_threshold_single_class_raises() -> None:
+    with pytest.raises(ValueError, match="both classes"):
+        choose_threshold([0, 0, 0], [0.2, 0.6, 0.9])
 
 
 def test_confusion_frame_labels_axes() -> None:

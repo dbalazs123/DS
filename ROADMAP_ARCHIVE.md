@@ -4,7 +4,7 @@ Historical detail split out of [`ROADMAP.md`](ROADMAP.md) to keep the active
 roadmap small (it was read into context in full on every session). Nothing here
 is live plan — the current state and demand queue live in `ROADMAP.md`. This
 file is the durable record: the goal evaluation, the completed plan of record
-(P1–P19), the per-project friction backlogs (**items 1–38**, referenced by
+(P1–P20), the per-project friction backlogs (**items 1–41**, referenced by
 number from project code and `CHANGELOG.md`), and the settled-decision
 rationales that `CLAUDE.md`'s engineering notes point to. Grep it by item number
 or decision name when you need the "why" behind a resolved item.
@@ -596,6 +596,43 @@ The lesson is the ordering rule above: demand first.
   recall 0.645 recovers real positives the majority floor (recall 0.0) finds
   none of — the exact case probabilistic metrics exist to reveal. The rest of the
   rare-event friction (items 37–38) was handled inline and recorded, not built —
+  see the backlog below.
+
+- **P20 — a *second* imbalanced project that tunes the operating point, firing
+  the two items P19 parked: DONE.** `projects/mammography` flags the rare
+  calcification (2.3% positive) in 11,183 screened regions of the Woods
+  mammography dataset. Chosen by the grep-driven rule to give
+  `probability_metrics` its *second* consumer; because a screening programme has
+  an **operating point** reweighting can't express (`bank_marketing` used
+  `class_weight="balanced"` and kept 0.5), this project fits a plain logistic
+  regression and **tunes the threshold** — the exact shape items 37–38 said would
+  justify building the tools they parked. Two library additions, both now above
+  the aliasing bar on first-consumer strength:
+  - `ds.evaluation.choose_threshold(y_true, y_score, *, criterion, target)` (item
+    37) — sweeps the precision–recall curve for the F1-optimal threshold, or the
+    cheapest threshold meeting a `target_precision` / `target_recall` floor.
+    Above the bar as fiddly reusable logic *with* a correctness guarantee: it
+    drops the trailing `(precision=1, recall=0)` point `precision_recall_curve`
+    returns with no matching threshold (the classic off-by-one), and raises when
+    a target is unreachable rather than silently returning that phantom point.
+  - `ds.viz.plot_pr_curve` / `plot_roc_curve` (item 38) — the operating-point
+    *curve* with its no-skill baseline (prevalence line / chance diagonal), the
+    view that pairs with `probability_metrics` the way `plot_confusion_matrix`
+    pairs with `confusion_frame`. The pipeline scatters the three tuned operating
+    points onto the PR curve.
+
+  Full lifecycle on `ds` + scikit-learn: checksum-verified fetch
+  (`fetch_dataset`'s seventh consumer, first no-header CSV via `names=`), boundary
+  validation with the six attributes' dtypes pinned, the quoted `'-1'`/`'1'` label
+  stripped and encoded, a one-step scale plan (`fit_pipeline`) re-fitted per fold,
+  stratified 5-fold CV, pipeline + a plain (un-reweighted) model persisted and the
+  held-out split scored from the reloaded model — thresholds chosen on the *train*
+  scores, never the test set. Honest headline: the model **ranks** calcifications
+  well (ROC-AUC 0.97, average precision 0.65 vs the 0.02 prevalence floor), but at
+  the naive 0.5 cut it misses ~64% of them (recall 0.37); tuning to an 80% recall
+  budget lifts recall to 0.92 at a read-off precision cost (0.28) — the screening
+  trade made explicit, the operating point reweighting cannot target. The
+  remaining friction (items 39–41) was handled inline and recorded, not built —
   see the backlog below.
 
 ## Friction backlog (from `projects/nyc_taxis`)
@@ -1480,6 +1517,83 @@ Notes from the same run, for the record:
   other metric helpers, scoring the model against a probabilistic prevalence
   floor was the same `compare_models(..., metrics_fn=probability_metrics)` call —
   the `MetricsFunction` protocol paid off, no new comparison surface needed.
+
+## Friction backlog (from `projects/mammography`)
+
+The twelfth run of the demand loop, and the **second** on an imbalanced /
+rare-event target — picked by the grep-driven rule to give `probability_metrics`
+a second consumer and to fire the two items `bank_marketing` parked (37–38).
+Numbering continues from the `bank_marketing` list. Unlike that project, this one
+does *not* reweight the classes: it tunes the operating point, which is precisely
+the shape items 37–38 named as their build trigger — so **both were served in the
+same loop** (P20), on first-consumer strength. The remaining friction had clean
+inline workarounds and is recorded, not built:
+
+36. *(see the `bank_marketing` backlog — `probability_metrics`, served in P19; its
+    second consumer is this project.)*
+37. ~~**No operating-point / threshold-selection helper.**~~ — **served in P20**:
+    `ds.evaluation.choose_threshold(y_true, y_score, *, criterion, target)`. A
+    screening programme needs a *tuned* operating point (catch ≥80% of
+    calcifications), which `class_weight` cannot express — so this project's
+    demand fired the trigger `bank_marketing` recorded exactly. Above the aliasing
+    bar as fiddly reusable logic with a correctness guarantee: it drops the
+    trailing `(precision=1, recall=0)` point that `precision_recall_curve` returns
+    with no matching threshold (the classic off-by-one) before searching, and
+    raises when a `target_*` floor is unreachable rather than returning that
+    phantom point. Tests pin the off-by-one alignment (a thresholded prediction
+    reproduces the reported precision/recall), the unreachable-target raise, and
+    the single-class guard.
+38. ~~**No ROC / precision–recall *curve* plot in `ds.viz`.**~~ — **served in
+    P20**: `ds.viz.plot_pr_curve` / `plot_roc_curve`. On a rare-event screening
+    target the *sweep* is the finding (which recall you buy at which precision),
+    not a single summary number, so the curve earned its place — the second
+    probabilistic project wanting the operating-point curve, the trigger P19
+    recorded. Each draws its no-skill baseline (the PR curve a dashed prevalence
+    line, the ROC curve the chance diagonal) and returns the Axes, so the pipeline
+    scatters the three tuned operating points onto the PR curve.
+39. **~30% of rows are exact duplicates, kept not dropped.** — *recorded, done
+    inline.* With only six coarse standardized attributes and no patient
+    identifier, identical vectors are expected distinct screenings; dropping them
+    would delete real records and distort the 2.3% prevalence (the titanic /
+    bank_marketing precedent, a third consumer). The honest cost — a duplicated
+    vector can land in both split halves — is a mild optimism shared with those
+    projects, not a leakage bug fixable without deleting real rows. No library
+    change: the "keep coarse-vector duplicates" judgment stays a per-project call.
+40. **The threshold is tuned on the training scores, not a dedicated validation
+    split.** — *recorded, done inline.* Choosing the operating point on the same
+    data the model was fit on is a mild in-sample optimism; the clean fix is a
+    held-out validation slice (or out-of-fold scores) to choose the threshold on.
+    A one-line `train_test_split_random` carve is below the aliasing bar, and this
+    project's held-out *test* metrics (scored at the train-chosen threshold) are
+    still honest, so it was left inline. The trigger for a library
+    `fit`/`choose`/`apply` threshold-calibration helper is a second project that
+    needs the out-of-fold operating point (e.g. a cost-sensitive threshold tuned
+    under CV), where the validation plumbing stops being one line.
+41. **`choose_threshold` returns a point; applying it is still a caller
+    list-comprehension.** — *recorded, done inline.* Turning the chosen threshold
+    into hard labels is `[1 if s >= t else 0 for s in scores]` — one line, done
+    inline in three places here. A library `apply_threshold(scores, t)` (or a
+    `predict=` convenience on `choose_threshold`) is below the bar until a second
+    consumer hand-rolls the same comprehension enough to want it named.
+
+Notes from the same run, for the record:
+
+- **A plain, un-reweighted model is the deliberate contrast with `bank_marketing`.**
+  P19 handled imbalance with `class_weight="balanced"` (a scikit-learn argument);
+  P20 leaves the loss alone and tunes the threshold instead, because the screening
+  operating point ("catch ≥80%") is a *recall budget* reweighting can't target.
+  Recorded so the un-weighted `LogisticRegression` reads as intended, not as an
+  omission.
+- **No categorical or missing-value surface fired — the shape is all-numeric and
+  complete.** Six standardized float attributes, no NaN, no categoricals: the
+  transform plan is a single `scale_features` step, and `target_rate_by_category`
+  / one-hot / impute had nothing to consume. The friction is entirely on the
+  probabilistic / threshold side, which is exactly the surface this loop set out
+  to stress.
+- **`probability_metrics`' single-class guard paid off on the tiny-positive
+  class.** At 2.3% prevalence a careless split or a degenerate fold can hand a
+  scorer one class; the P19 guard (raise, don't silently return `nan`) is what
+  makes that fail loudly here rather than poison a mean.
 
 Kept for the record — CLAUDE.md's engineering notes point here. Each was
 re-checked in the 2026-07 evaluation; verdicts inline.
