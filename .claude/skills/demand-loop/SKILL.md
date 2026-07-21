@@ -135,7 +135,16 @@ not a failure).
 
 ### 6. Fix only what bleeds
 
-Apply the aliasing bar to each friction point:
+**First, reconcile against the parked backlog.** Before deferring any friction
+point, grep `ROADMAP_ARCHIVE.md` for an existing parked item describing the same
+pattern. Most parked triggers read "a second project reaches for the same
+pattern" — so if the project you just built *is* that awaited second consumer,
+the item's revisit trigger has now fired. Promote and build it **this** loop
+(with two real consumers it is now above the aliasing bar) rather than recording
+the same friction a second time. Re-parking an item whose trigger has fired is
+the failure mode this step exists to prevent.
+
+Then apply the aliasing bar to each remaining friction point:
 
 - **Above the bar (a correctness gap / capability class)** → add the minimal
   library surface under `src/ds/<stage>/`. Follow the contributor recipe:
