@@ -11,7 +11,7 @@ The pipeline runs the full lifecycle on ``ds`` + scikit-learn alone: fetch →
 validate → explore → clean → chronological split → fit-on-train/apply-to-both →
 persist the scoring pipeline and the fitted model → score from the reloaded
 model → evaluate against a naive baseline → visualize. Friction it surfaced in
-the library is recorded in ``ROADMAP.md``; the zone columns, originally dropped
+the library is recorded in ``ROADMAP_ARCHIVE.md``; the zone columns, originally dropped
 for their cardinality, are consumed via ``fit_topk_categories`` (friction
 item 4, since promoted into the library) and evaluated against a boroughs-only
 variant to check they earn their place.

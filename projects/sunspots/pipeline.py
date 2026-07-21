@@ -21,7 +21,7 @@ rolling-origin folds → persist the model → from the reloaded model, both a
 one-step-ahead forecast (each step reads the *true* recent values) and a
 recursive multi-step forecast (each step feeds the model its own predictions)
 → evaluate against the naive references → visualize. Friction it surfaced is
-recorded in ``ROADMAP.md`` — that regenerated backlog is as much the deliverable
+recorded in ``ROADMAP_ARCHIVE.md`` — that regenerated backlog is as much the deliverable
 as the forecast.
 
 Run it with::

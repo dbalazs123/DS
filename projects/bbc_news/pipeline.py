@@ -33,7 +33,7 @@ one-step scale plan (``fit_pipeline``) → stratified 5-fold CV with the plan
 re-fitted per fold → persist the scoring pipeline and the fitted model → score
 the held-out split from the reloaded model → evaluate (macro-averaged) against a
 length-only model and the majority class → visualize. Friction it surfaced and
-served is recorded in ``ROADMAP.md``.
+served is recorded in ``ROADMAP_ARCHIVE.md``.
 
 **Determinism across CI jobs:** ``count_tokens`` returns BPE counts only when
 tiktoken and its vocabulary are available, else a whitespace count. CI runs the

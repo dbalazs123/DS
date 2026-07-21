@@ -16,7 +16,7 @@ plan re-fitted inside each fold → persist the scoring pipeline and the fitted
 model → score from the reloaded model → evaluate with the classification
 stack (confusion matrix, per-class metrics, model comparison) against a
 majority-class baseline and the classic sex-only rule → visualize. Friction it
-surfaced in the library is recorded in ``ROADMAP.md`` — that regenerated
+surfaced in the library is recorded in ``ROADMAP_ARCHIVE.md`` — that regenerated
 backlog is as much the deliverable as the model.
 
 Run it with::

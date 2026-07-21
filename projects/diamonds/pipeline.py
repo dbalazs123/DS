@@ -21,7 +21,7 @@ three-step transform plan on the training split (``ds.pipeline.fit_pipeline``)
 persist the scoring pipeline and the fitted model → score the held-out split
 from the reloaded model → evaluate against the majority class and a
 proportions-only rule → visualize. Friction it surfaced in the library is
-recorded in ``ROADMAP.md`` — that regenerated backlog is as much the
+recorded in ``ROADMAP_ARCHIVE.md`` — that regenerated backlog is as much the
 deliverable as the classifier.
 
 Run it with::

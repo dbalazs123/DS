@@ -18,7 +18,7 @@ chronological split → fit the one-step transform plan on the training window
 persist the scoring pipeline and the fitted model → score the held-out window
 from the reloaded model → evaluate against the naive-last and seasonal-naive
 baselines → visualize with ``ds.viz.plot_series``. Friction it surfaced in
-the library was recorded in ``ROADMAP.md`` — that regenerated backlog was as
+the library was recorded in ``ROADMAP_ARCHIVE.md`` — that regenerated backlog was as
 much the deliverable as the forecast, and this pipeline now consumes the
 helpers it demanded (items 10–12).
 
@@ -114,7 +114,7 @@ def build_time_axis(df: pd.DataFrame) -> pd.DataFrame:
     needs one sortable datetime column. Each month is stamped to its first
     day. The assembled axis must be unique: a duplicated (year, month) pair
     would mean corrupted input, and sorting would silently interleave the
-    duplicates — the ``assert_unique`` guard (ROADMAP item 24; this and
+    duplicates — the ``assert_unique`` guard (ROADMAP_ARCHIVE.md item 24; this and
     air_quality are its two consumers) that raw ``to_datetime`` does not do.
 
     Args:
@@ -225,7 +225,7 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     # step: the month one-hot vocabulary. The series needs no imputation
     # (complete), no outlier clipping (the "outliers" are the seasonal peaks
     # the model must learn) and no scaling (plain OLS is scale-free) — a
-    # scope finding about fit_pipeline recorded in ROADMAP.md, not a gap.
+    # scope finding about fit_pipeline recorded in ROADMAP_ARCHIVE.md, not a gap.
     plan = [
         FitStep("one_hot_encode", lambda df: fit_one_hot_categories(df, columns=["month"])),
     ]
@@ -238,7 +238,7 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     # per-fold re-fitting would be a no-op anyway — the only fitted state is
     # the month vocabulary, and every fold's training window spans more than
     # a year, so each would re-learn the identical 12 calendar months
-    # (measured; see ROADMAP.md).
+    # (measured; see ROADMAP_ARCHIVE.md).
     cv_scores = cross_validate_by_time(
         scoring.apply(train),
         time_column="date",

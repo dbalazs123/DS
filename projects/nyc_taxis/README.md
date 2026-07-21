@@ -20,7 +20,7 @@ model (`ds.modeling.persistence`) → score the held-out window from the
 plot.
 
 This project exists to run the workspace's demand loop: friction it surfaced
-in the library is recorded in [`ROADMAP.md`](../../ROADMAP.md), and all five
+in the library is recorded in [`ROADMAP_ARCHIVE.md`](../../ROADMAP_ARCHIVE.md), and all five
 of its items have since been promoted into the library and are consumed
 here — model persistence (`ds.modeling.persistence`), `pickup_hour` from
 `add_datetime_features`, the train-mean baseline

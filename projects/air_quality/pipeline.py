@@ -17,7 +17,7 @@ first real consumers for ``assert_dtypes`` (the raw file is
 semicolon-separated with decimal commas — a half-right read silently parses
 every measurement as strings), and a rolling-origin cross-validation whose
 per-fold fitted state genuinely varies (the parked item-9 trigger). Friction
-it surfaced in the library is recorded in ``ROADMAP.md`` — the regenerated
+it surfaced in the library is recorded in ``ROADMAP_ARCHIVE.md`` — the regenerated
 backlog is as much the deliverable as the model.
 
 The pipeline runs the full lifecycle on ``ds`` + scikit-learn alone: fetch →
@@ -144,7 +144,7 @@ def fetch_raw(settings: Settings) -> Path:
 
     A thin binding of this project's dataset (mirrors, filename, pinned digest)
     to :func:`ds.io.fetch_dataset`, which does the multi-mirror download,
-    checksum verification and cache re-verify (ROADMAP item 27's shared dance).
+    checksum verification and cache re-verify (ROADMAP_ARCHIVE.md item 27's shared dance).
 
     Args:
         settings: Resolves the raw-data directory.
@@ -168,7 +168,7 @@ def trim_raw(df: pd.DataFrame, expected_rows: int = EXPECTED_ROWS) -> pd.DataFra
     with ``assert_row_count`` — the second time in this workspace a boundary
     file has needed an expected-shape check to make a silently-wrong parse
     loud (the trap here: a plausible-looking frame that is 114 rows of NaN too
-    long), which earned that guard its place (ROADMAP item 25).
+    long), which earned that guard its place (ROADMAP_ARCHIVE.md item 25).
 
     Args:
         df: The frame as read from the raw file with the correct separator.
@@ -214,7 +214,7 @@ def build_time_axis(df: pd.DataFrame) -> pd.DataFrame:
     downstream needs one sortable datetime column. The assembled axis must be
     unique: a duplicated hour would mean corrupted input, and sorting would
     silently interleave the duplicates — the guard raw ``to_datetime`` does
-    not do, now ``assert_unique`` (ROADMAP item 24, the second project to
+    not do, now ``assert_unique`` (ROADMAP_ARCHIVE.md item 24, the second project to
     hand-assemble a time axis; the concatenation and format stay project-local).
 
     Args:
@@ -242,7 +242,7 @@ def drop_offline_rows(df: pd.DataFrame) -> pd.DataFrame:
     imputing an entire feature row out of training medians would manufacture
     data. Rows where at least one device channel reports stay, and the impute
     step fills only those genuine partial gaps. (Hand-rolled row mask;
-    recorded against ROADMAP item 15's trigger.)
+    recorded against ROADMAP_ARCHIVE.md item 15's trigger.)
 
     Args:
         df: Frame with the device columns present.
@@ -395,7 +395,7 @@ def run(output_dir: Path, settings: Settings | None = None) -> dict[str, float]:
     # projects' single-vocabulary plans, this pipeline's fitted state
     # genuinely varies fold to fold — the impute medians and scale centres are
     # learned from seasons of differing missingness and level (nox_gt's median
-    # swings ~28% across the folds) — so make_pipeline (ROADMAP item 22) is
+    # swings ~28% across the folds) — so make_pipeline (ROADMAP_ARCHIVE.md item 22) is
     # what keeps each fold's statistics on its own past. The raw training
     # frame goes in; each fold fits its own pipeline from the same plan the
     # scoring run uses. This dissolved the hand-rolled fold-boundary

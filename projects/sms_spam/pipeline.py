@@ -10,7 +10,7 @@ consumer, and its graceful-degradation contract gets a real test), the
 stage has no text helpers, and ``ds.pipeline``'s closed step vocabulary has no
 vectorization step, so the TF-IDF vectorizer's fitted state must live in the
 scikit-learn model object outside the persisted ``ds`` ``Pipeline``. That
-friction is recorded in ``ROADMAP.md`` — the regenerated backlog is as much
+friction is recorded in ``ROADMAP_ARCHIVE.md`` — the regenerated backlog is as much
 the deliverable as the classifier.
 
 The pipeline runs the full lifecycle on ``ds`` + scikit-learn alone: fetch →

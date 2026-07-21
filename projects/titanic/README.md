@@ -25,7 +25,7 @@ exercise the evaluation surface no real project had touched:
 `classification_metrics`, `confusion_frame`, `per_class_metrics`,
 `plot_confusion_matrix`, and the first composition of `cross_validate_kfold`
 with `metrics_fn=classification_metrics`. Friction it surfaced in the library
-is recorded as the new backlog in [`ROADMAP.md`](../../ROADMAP.md); nothing
+is recorded as the new backlog in [`ROADMAP_ARCHIVE.md`](../../ROADMAP_ARCHIVE.md); nothing
 is promoted in the same change (demand first, one step per change).
 
 ## Modeling decisions worth knowing

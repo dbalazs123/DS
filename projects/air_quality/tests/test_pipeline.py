@@ -150,7 +150,7 @@ def test_pipeline_end_to_end(tmp_path: Path) -> None:
     assert {"mae", "rmse", "r2"} <= set(comparison.columns)
 
     # Five rolling-origin folds, each re-fitting the transform plan on its own
-    # expanding window via make_pipeline (ROADMAP item 22 — the per-fold
+    # expanding window via make_pipeline (ROADMAP_ARCHIVE.md item 22 — the per-fold
     # fitted state genuinely varies here, so the leak the shortcut carried is
     # closed rather than merely measured). The window grows fold to fold.
     cv_scores = pd.read_csv(out / "cv_folds.csv", index_col=0)
