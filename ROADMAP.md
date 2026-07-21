@@ -25,7 +25,7 @@ working set of the most-reached-for helpers. Built out so far:
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations`, `target_rate_by_category` (per-level grouped target rate, the categorical read on the target) |
 | Feature | `ds.features` | `add_datetime_features` (selectable `features=` subset; opt-in `_elapsed_months` trend counter), `add_lagged_features` (autoregressive lag columns; per-entity via `group=` on a panel), `text_features` (char/word/word-length columns), `one_hot_encode`, `ordinal_encode`, `collapse_categories` (top-k + "other"), `scale_features`, `bin_column` + split-safe pairs `fit_one_hot_categories`/`apply_one_hot_encode`, `fit_ordinal_categories`/`apply_ordinal_encode`, `fit_topk_categories`/`apply_collapse_categories`, `fit_scale_params`/`apply_scale_features` |
 | Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `train_test_split_random` (shuffled, optionally stratified), `fit_baseline` (mean / majority / naive-last / seasonal-naive), `forecast_recursive` (recursive multi-step forecast from a lag-feature model), `save_model`/`load_model` (joblib persistence), `count_tokens` |
-| Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `confusion_frame`, `per_class_metrics`, `cross_validate_by_time` (rolling origin; optionally re-fits a transform pipeline per fold via `make_pipeline`), `cross_validate_kfold` (optionally stratified; same `make_pipeline` re-fit), `compare_models` |
+| Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `probability_metrics` (threshold-free ROC-AUC / average precision / Brier for a rare-event target), `confusion_frame`, `per_class_metrics`, `cross_validate_by_time` (rolling origin; optionally re-fits a transform pipeline per fold via `make_pipeline`), `cross_validate_kfold` (optionally stratified; same `make_pipeline` re-fit), `compare_models` |
 | Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_target_rate` (per-level target rate + baseline line), `plot_confusion_matrix`, `plot_residuals`, `plot_model_comparison`, `plot_series` (composable series/forecast plot) |
 
 Supporting: `ds.pipeline` (a persistable fit-once/apply-many `Pipeline` over
@@ -33,33 +33,39 @@ the `fit_*`/`apply_*` pairs, fitted in one call from a `FitStep` plan via
 `fit_pipeline`), `ds` CLI (`ds version`, `ds new`, `ds run`), a
 per-stage docs Guide with cross-stage recipes, a `test-extras` CI job,
 single-sourced version, and an extended project template. `projects/` holds the
-synthetic worked example (`_example`) and ten **real-data** projects:
+synthetic worked example (`_example`) and eleven **real-data** projects:
 `nyc_taxis` (regression), `titanic` (binary classification), `flights`
 (forecasting), `diamonds` (multiclass classification), `sms_spam` (text /
 binary spam classification), `air_quality` (sensor gap-filling regression
 on an hourly time axis), `adult_income` (heavily-categorical binary income
 classification), `sunspots` (autoregressive forecasting — the second
 forecasting project, on a non-calendar solar cycle), `bbc_news` (multiclass
-text topic classification — the second text project) and `store_sales`
+text topic classification — the second text project), `store_sales`
 (store × item daily-sales **panel** — the first multi-entity project, which
-pulled group-aware lags).
+pulled group-aware lags) and `bank_marketing` (term-deposit subscription —
+the first **imbalanced / rare-event** project, which pulled probabilistic
+evaluation metrics).
 
 ## Demand queue (next up)
 
-The demand queue is **empty** — every friction item raised so far (items 1–35,
+The demand queue is **empty** — every friction item raised so far (items 1–38,
 in `ROADMAP_ARCHIVE.md`) is resolved, struck, or parked with a recorded revisit
-trigger. The tenth demand loop (`store_sales`, the first **panel** project) is
-done: it pulled group-aware `add_lagged_features(group=)` and recorded the rest
-of the panel's single-series friction (items 32–35). The next step is an ordinary
-**eleventh demand loop**: a new real-data project chosen by the grep-driven rule
-(grep which library surfaces still have no real consumer and pick the data shape
-that stresses the thinnest cluster by absence), whose friction regenerates the
-backlog. Deprioritized until a project pulls them: a **panel-aware split /
-rolling-origin backtest** in `ds.modeling`/`ds.evaluation` (item 33/35 — the
-parked backtest harness now has one consumer's demand; a *second* panel project
-is the build trigger), a Cramér's-V / mutual-information categorical *ranker*
-(item 29's unbuilt sibling shape), a first-class `ds.pipeline` vectorize step
-(item 18 — only if a text project shows the model-side convention genuinely
+trigger. The eleventh demand loop (`bank_marketing`, the first **imbalanced /
+rare-event** project) is done: it pulled `ds.evaluation.probability_metrics`
+(threshold-free ROC-AUC / average precision / Brier) and recorded the rest of the
+rare-event friction (items 37–38). The next step is an ordinary **twelfth demand
+loop**: a new real-data project chosen by the grep-driven rule (grep which
+library surfaces still have no real consumer and pick the data shape that
+stresses the thinnest cluster by absence), whose friction regenerates the
+backlog. Deprioritized until a project pulls them: a **threshold-selection
+helper** `choose_threshold` in `ds.evaluation` (item 37 — a *second* imbalanced
+project needing a tuned operating point, not class reweighting, is the trigger),
+a **ROC / PR curve plot** in `ds.viz` (item 38 — a second probabilistic project
+wanting the curve, not the summary bar), a **panel-aware split / rolling-origin
+backtest** in `ds.modeling`/`ds.evaluation` (item 33/35 — a *second* panel
+project is the build trigger), a Cramér's-V / mutual-information categorical
+*ranker* (item 29's unbuilt sibling shape), a first-class `ds.pipeline` vectorize
+step (item 18 — only if a text project shows the model-side convention genuinely
 fails, which two now have not), more cookbook recipes, more CLI.
 
 ## Working agreement

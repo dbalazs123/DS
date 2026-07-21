@@ -42,7 +42,10 @@ in the **same** change.
 │                          #   classification, second text project;
 │                          #   store_sales = real-data store x item daily-sales
 │                          #   panel, first multi-entity project — pulled
-│                          #   group-aware lags)
+│                          #   group-aware lags;
+│                          #   bank_marketing = real-data term-deposit
+│                          #   subscription, first imbalanced / rare-event
+│                          #   project — pulled probabilistic eval metrics)
 ├── templates/project/     # copier template for new projects
 ├── notebooks/             # exploratory notebooks
 ├── data/                  # git-ignored: raw/ interim/ processed/

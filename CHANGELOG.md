@@ -7,6 +7,32 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `projects/bank_marketing`: eleventh **real-data** project (P19 — the first on
+  an **imbalanced / rare-event** target), predicting term-deposit subscription on
+  the 41,188-row UCI Bank Marketing dataset where only 11.3% say yes. Chosen by
+  the grep-driven demand rule for the data *shape* no prior classification project
+  had (all scored a roughly-balanced target on hard labels, where accuracy is a
+  trap), and its one library gap served in the same demand loop:
+  - `ds.evaluation.probability_metrics(y_true, y_score)` (backlog item 36):
+    ROC-AUC, average precision (PR-AUC) and Brier score from a classifier's
+    predicted *probabilities* — the threshold-free read on ranking quality that
+    the hard-label `classification_metrics` structurally could not give on a
+    rare-event target. Shares the two-argument metric shape, so it composes with
+    `compare_models`; raises on single-class `y_true` where scikit-learn silently
+    returns `nan`. `bank_marketing` is its first consumer.
+
+  Full lifecycle on `ds` + scikit-learn: checksum-verified fetch
+  (`fetch_dataset`'s sixth consumer), boundary validation with numeric dtypes
+  pinned, `duration` dropped as leakage and the `pdays == 999` sentinel folded to
+  a binary flag, stratified split, a two-step one-hot + scale plan (`fit_pipeline`)
+  re-fitted per fold, a `class_weight="balanced"` model, and the held-out split
+  scored from the reloaded model — evaluated probabilistically *and* on hard
+  labels. Held-out accuracy 0.835 sits *below* the majority floor's 0.887, yet
+  ROC-AUC 0.80 (vs 0.50) and average precision 0.46 (vs the 0.11 prevalence floor)
+  show the model genuinely ranks subscribers — the case probabilistic metrics
+  exist to reveal. The rest of the rare-event friction (a threshold-selection
+  helper, a ROC/PR curve plot) had clean inline workarounds and is recorded as
+  backlog items 37–38, not built.
 - `projects/store_sales`: tenth **real-data** project (P18 — the first on a
   **panel**, i.e. multiple entities stacked in one frame), forecasting daily units
   sold across a store × item subset (50 entities) of the classic "Store Item

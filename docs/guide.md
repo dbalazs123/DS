@@ -530,13 +530,36 @@ from ds.evaluation import (
     classification_metrics,
     confusion_frame,
     per_class_metrics,
+    probability_metrics,
     regression_metrics,
 )
 
 regression_metrics(y_true, y_pred)       # mae, rmse, r2
 classification_metrics(y_true, y_pred)   # accuracy, precision, recall, f1 (averaged)
+probability_metrics(y_true, y_score)     # roc_auc, average_precision, brier (from probabilities)
 confusion_frame(y_true, y_pred)          # labeled confusion matrix (true x predicted)
 per_class_metrics(y_true, y_pred)        # precision/recall/f1/support per class
+```
+
+On a **rare-event** target, hard-label accuracy is a trap: a classifier that
+predicts the majority class for everyone scores its prevalence (0.89 at 11%
+positives) while finding none of them. `probability_metrics` scores the
+predicted *probability* of the positive class — `model.predict_proba(X)[:, 1]` —
+so it reads ranking quality independent of any threshold: `roc_auc` (0.5 is
+chance) and `average_precision` (the area under the precision–recall curve, whose
+no-skill floor is the positive rate — the one to watch under heavy imbalance).
+It shares the two-argument metric shape, so it drops into `compare_models` to
+score the model against a prevalence floor, and it raises on single-class
+`y_true` rather than returning a silent `nan`. Handle the imbalance itself with
+the estimator's `class_weight="balanced"` so its 0.5 threshold still yields a
+meaningful confusion matrix:
+
+```python
+from sklearn.linear_model import LogisticRegression
+
+model = LogisticRegression(max_iter=1000, class_weight="balanced").fit(x_train, y_train)
+scores = model.predict_proba(x_test)[:, 1]
+probability_metrics(y_test, scores)      # roc_auc, average_precision, brier
 ```
 
 With an int-coded target (the form the metric surface and
