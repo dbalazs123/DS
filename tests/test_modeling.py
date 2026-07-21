@@ -19,6 +19,7 @@ from ds.evaluation import (
     cross_validate_by_time,
     cross_validate_kfold,
     per_class_metrics,
+    probability_metrics,
     regression_metrics,
 )
 from ds.features import add_lagged_features, fit_scale_params
@@ -128,6 +129,40 @@ def test_classification_metrics_perfect() -> None:
     m = classification_metrics([0, 1, 1], [0, 1, 1])
     assert m["accuracy"] == 1.0
     assert m["f1"] == 1.0
+
+
+def test_probability_metrics_perfect_ranking() -> None:
+    # Scores that perfectly separate the classes: every positive above every
+    # negative -> ROC-AUC and average precision are both 1.0.
+    m = probability_metrics([0, 0, 1, 1], [0.1, 0.2, 0.8, 0.9])
+    assert m["roc_auc"] == 1.0
+    assert m["average_precision"] == 1.0
+    assert m["brier"] < 0.05
+
+
+def test_probability_metrics_no_skill_scores_rank_at_chance() -> None:
+    # A constant score for every row cannot rank positives above negatives:
+    # ROC-AUC is exactly 0.5, and average precision collapses to the positive
+    # rate (here 2/4 = 0.5) — the no-skill floors the docstring names.
+    m = probability_metrics([0, 1, 0, 1], [0.5, 0.5, 0.5, 0.5])
+    assert m["roc_auc"] == 0.5
+    assert m["average_precision"] == 0.5
+
+
+def test_probability_metrics_reward_ranking_over_hard_labels() -> None:
+    # Two positives (of four rows) both score above the negatives but below
+    # 0.5, so a hard-label read at threshold 0.5 finds none of them; the
+    # probabilistic view still sees a perfect ranking.
+    y_true = [0, 0, 1, 1]
+    y_score = [0.05, 0.1, 0.3, 0.4]
+    assert probability_metrics(y_true, y_score)["roc_auc"] == 1.0
+    hard = classification_metrics(y_true, [1 if s >= 0.5 else 0 for s in y_score])
+    assert hard["recall"] == 0.0
+
+
+def test_probability_metrics_single_class_raises() -> None:
+    with pytest.raises(ValueError):
+        probability_metrics([1, 1, 1], [0.2, 0.6, 0.9])
 
 
 def test_confusion_frame_labels_axes() -> None:

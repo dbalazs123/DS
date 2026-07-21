@@ -1,0 +1,5 @@
+# Bank Marketing — notebooks
+
+Exploratory notebooks for bank_marketing. Keep them here rather than in
+`src/ds/`, and promote anything genuinely reusable back into the shared `ds`
+library instead of copy-pasting it between projects.

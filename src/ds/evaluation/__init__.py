@@ -57,6 +57,52 @@ def classification_metrics(
     }
 
 
+def probability_metrics(y_true: Sequence[int], y_score: Sequence[float]) -> dict[str, float]:
+    """Compute threshold-free metrics for a binary probabilistic classifier.
+
+    Where :func:`classification_metrics` scores *hard* 0/1 predictions — and so
+    hides behind whatever threshold produced them — this scores the predicted
+    **probability** of the positive class directly. It is the honest read on a
+    rare-event target, where a hard-label accuracy is a trap (a classifier that
+    predicts the majority class for everyone scores its prevalence, e.g. 0.89 at
+    11% positives, while finding none of them): ``roc_auc`` and
+    ``average_precision`` measure how well the scores *rank* positives above
+    negatives regardless of operating point, and ``brier`` measures how well
+    calibrated they are.
+
+    ``average_precision`` (the area under the precision–recall curve) is the one
+    to watch under heavy imbalance — unlike ROC-AUC it is not inflated by the
+    large true-negative mass, so its no-skill floor is the positive rate, not a
+    flat 0.5.
+
+    Args:
+        y_true: Ground-truth binary labels (0/1), with the minority class of
+            interest coded 1.
+        y_score: Predicted probability (or any monotonically increasing score)
+            of the positive class — e.g. ``model.predict_proba(X)[:, 1]`` — aligned
+            with ``y_true``.
+
+    Returns:
+        A dict with ``roc_auc`` (area under the ROC curve; 0.5 is chance),
+        ``average_precision`` (area under the precision–recall curve; the
+        positive rate is chance) and ``brier`` (mean squared error of the
+        probabilities; lower is better).
+
+    Raises:
+        ValueError: If ``y_true`` carries only one class (ROC-AUC and average
+            precision are undefined without both a positive and a negative;
+            scikit-learn merely warns and returns ``nan`` there, so this guards
+            the silent-``nan`` trap explicitly).
+    """
+    if len(set(y_true)) < 2:
+        raise ValueError("y_true must contain both classes to score a ranking; got one class")
+    return {
+        "roc_auc": float(metrics.roc_auc_score(y_true, y_score)),
+        "average_precision": float(metrics.average_precision_score(y_true, y_score)),
+        "brier": float(metrics.brier_score_loss(y_true, y_score)),
+    }
+
+
 def confusion_frame(
     y_true: Sequence[int],
     y_pred: Sequence[int],
@@ -370,5 +416,6 @@ __all__ = [
     "cross_validate_by_time",
     "cross_validate_kfold",
     "per_class_metrics",
+    "probability_metrics",
     "regression_metrics",
 ]

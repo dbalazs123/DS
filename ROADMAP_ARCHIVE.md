@@ -4,7 +4,7 @@ Historical detail split out of [`ROADMAP.md`](ROADMAP.md) to keep the active
 roadmap small (it was read into context in full on every session). Nothing here
 is live plan — the current state and demand queue live in `ROADMAP.md`. This
 file is the durable record: the goal evaluation, the completed plan of record
-(P1–P18), the per-project friction backlogs (**items 1–35**, referenced by
+(P1–P19), the per-project friction backlogs (**items 1–38**, referenced by
 number from project code and `CHANGELOG.md`), and the settled-decision
 rationales that `CLAUDE.md`'s engineering notes point to. Grep it by item number
 or decision name when you need the "why" behind a resolved item.
@@ -559,6 +559,44 @@ The lesson is the ordering rule above: demand first.
   references — the naive ordering itself the read that the day-of-week cycle
   dominates. The rest of the panel's single-series friction (items 33–35) was
   handled inline and recorded, not built — see the backlog below.
+
+- **P19 — stress the first data *shape* no project had: an imbalanced /
+  rare-event target: DONE.** `projects/bank_marketing` predicts term-deposit
+  subscription on the 41,188-row UCI Bank Marketing dataset where only **11.3%**
+  say yes. Chosen by the grep-driven demand rule: every prior classification
+  project (titanic, adult_income, diamonds, sms_spam, bbc_news) worked a
+  roughly-balanced target scored on *hard labels*, so the evaluation surface had
+  never met a rare positive class where **accuracy is a trap** — a majority-class
+  predictor scores 0.887 accuracy while finding not one subscriber. The loop's
+  single library change served that gap (item 36):
+  - `ds.evaluation.probability_metrics(y_true, y_score)` (item 36) — ROC-AUC,
+    average precision (PR-AUC) and Brier score from a classifier's predicted
+    *probabilities*, the threshold-free read on ranking quality that
+    `classification_metrics` (hard labels only) structurally could not give.
+    Clearly above the aliasing bar: a whole capability class the library lacked,
+    plus a correctness guarantee — it raises on single-class `y_true` where
+    scikit-learn silently warns and returns `nan`. Same two-argument shape as the
+    other `*_metrics` helpers, so it drops straight into `compare_models`
+    (scoring the model against a prevalence floor that ranks at chance). Its
+    first consumer is `bank_marketing`, with tests pinning the no-skill floors
+    (ROC-AUC 0.5, AP = positive rate) and the single-class guard.
+
+  Full lifecycle on `ds` + scikit-learn: checksum-verified fetch
+  (`fetch_dataset`'s sixth consumer), boundary validation with the numeric
+  dtypes pinned, `duration` dropped as **leakage** (known only after the call it
+  predicts) and the `pdays == 999` "never contacted" sentinel folded into a
+  binary flag, the categorical read via `target_rate_by_category`, stratified
+  split, a two-step one-hot + scale plan (`fit_pipeline`) re-fitted per fold,
+  stratified 5-fold CV, pipeline + a `class_weight="balanced"` model persisted
+  and the held-out split scored from the reloaded model — evaluated
+  *probabilistically* (the new metric) **and** on hard labels. The honest
+  headline is the whole point: held-out accuracy 0.835 sits *below* the majority
+  floor's 0.887, yet ROC-AUC 0.80 (vs the 0.50 floor) and average precision 0.46
+  (vs the 0.11 prevalence floor) show the model genuinely ranks subscribers, and
+  recall 0.645 recovers real positives the majority floor (recall 0.0) finds
+  none of — the exact case probabilistic metrics exist to reveal. The rest of the
+  rare-event friction (items 37–38) was handled inline and recorded, not built —
+  see the backlog below.
 
 ## Friction backlog (from `projects/nyc_taxis`)
 
@@ -1376,6 +1414,72 @@ calendar vocabularies on train and applied to both; `split_features_target`,
 `regression_metrics`/`compare_models`, `plot_residuals`/`plot_model_comparison`
 and the two-call `plot_series` overlay all composed as on `flights`; and
 `save_model`/`load_model` scored the held-out window from the reloaded model.
+
+## Friction backlog (from `projects/bank_marketing`)
+
+The eleventh run of the demand loop, and the first on an **imbalanced /
+rare-event** target — picked by the grep-driven rule for the data *shape* no
+project had (every prior classification project scored a roughly-balanced target
+on hard labels). Numbering continues from the `store_sales` list. The
+load-bearing item was **served in the same demand loop** (a whole missing
+capability class, not a convenience gap); the rest had clean inline workarounds
+and are recorded, not built, in observed-pain order:
+
+36. ~~**No way to score a classifier's probabilities — accuracy is a trap at 11%
+    prevalence.**~~ — **served in P19**: `ds.evaluation.probability_metrics(y_true,
+    y_score)`. `classification_metrics` scores hard 0/1 predictions only, so it
+    hides behind whatever threshold produced them; on a rare-event target a
+    majority-class predictor scores 0.887 accuracy while finding no positives, so
+    hard labels cannot tell an honest story. The new helper scores the predicted
+    *probability* directly — ROC-AUC, average precision (PR-AUC, the
+    imbalance-robust one whose no-skill floor is the positive rate, not 0.5) and
+    Brier — the threshold-free capability the stage entirely lacked. Above the
+    aliasing bar on two counts: a capability class, and a correctness guarantee
+    (it raises on single-class `y_true`, where scikit-learn merely warns and
+    returns `nan`). `bank_marketing` is its first consumer.
+37. **No operating-point / threshold-selection helper.** — *recorded, done inline.*
+    A rare-event model at the default 0.5 threshold predicts almost all "no"; the
+    project handled this idiomatically with `class_weight="balanced"` on the
+    estimator (a scikit-learn argument, one keyword — well below the aliasing
+    bar), so the 0.5 threshold still yields a meaningful confusion matrix. A
+    library `choose_threshold(y_true, y_score, *, criterion=...)` — sweeping the
+    precision–recall curve to maximise F1 or hit a target precision/recall — is
+    genuinely fiddly reusable logic (the `precision_recall_curve` off-by-one
+    between thresholds and prec/rec is a classic bug), so it clears the bar the
+    moment it has real demand. The trigger is a *second* imbalanced project that
+    needs a **tuned** operating point rather than class reweighting (e.g. a fixed
+    precision budget, or a cost-sensitive threshold) — then it is built on
+    first-consumer strength beside `probability_metrics`.
+38. **No ROC / precision–recall *curve* plot in `ds.viz`.** — *recorded, not
+    built.* The probabilistic story was visualized with the existing
+    `plot_model_comparison` bars on `average_precision` (model vs prevalence
+    floor), which is enough to make the ranking gap legible. A dedicated
+    `plot_roc_curve` / `plot_pr_curve` (the curve, with its no-skill baseline)
+    would pair with `probability_metrics` the way `plot_confusion_matrix` pairs
+    with `confusion_frame`, but a single point-metric bar covered this project.
+    The trigger is a second probabilistic project wanting the operating-point
+    *curve* (where the sweep, not the summary number, is the finding), or an
+    explicit ask.
+
+Notes from the same run, for the record:
+
+- **`duration` dropped as leakage — the first leakage drop.** The call length is
+  known only *after* the call whose outcome is the target (a 0-second call is a
+  "no" by construction), so a model that keeps it scores spectacularly and
+  predicts nothing usable. The UCI docs are explicit it must be excluded. This is
+  a project-judgment boundary call, not a library gap (the earlier fnlwgt /
+  education drops in `adult_income` were redundancy, not leakage) — recorded so
+  the drop reads as intended.
+- **The `pdays == 999` sentinel is the decode-a-sentinel pattern's third
+  consumer.** Like air_quality's −200 and adult_income's "?", an in-band sentinel
+  (here "never previously contacted", ~96% of rows) is folded to a clean binary
+  flag inline — one `!=` comparison, below the aliasing bar. Reaffirms item 26:
+  the pattern stays inline, no library sentinel-decoder is pulled.
+- **`compare_models` composed with the new metric with no change.** Because
+  `probability_metrics` shares the two-argument `(y_true, y_score)` shape of the
+  other metric helpers, scoring the model against a probabilistic prevalence
+  floor was the same `compare_models(..., metrics_fn=probability_metrics)` call —
+  the `MetricsFunction` protocol paid off, no new comparison surface needed.
 
 Kept for the record — CLAUDE.md's engineering notes point here. Each was
 re-checked in the 2026-07 evaluation; verdicts inline.
