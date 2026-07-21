@@ -35,8 +35,8 @@ dependencies = [
 
 [project.optional-dependencies]
 # Extras carry only dependencies that library code actually consumes; a dep is
-# added here in the same change as its first consumer (see ROADMAP.md for the
-# intended future directions, e.g. a statsmodels-backed `timeseries` extra).
+# added here in the same change as its first consumer (see ROADMAP_ARCHIVE.md for
+# the intended future directions, e.g. a statsmodels-backed `timeseries` extra).
 # NLP / LLM work. Install with:  uv sync --extra nlp
 nlp = [
     "tiktoken>=0.7",

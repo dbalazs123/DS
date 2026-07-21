@@ -85,33 +85,24 @@ more detail).
 
 ## Roadmap
 
-[`ROADMAP.md`](ROADMAP.md) carries the plan of record (P1–P15 all done, and
-**Release 0.2.0 shipped**). P14 ran the *seventh* demand loop —
-`projects/adult_income`, the first heavily-categorical / high-cardinality
-project — and **P15 served its backlog** (items 27–29): built
-`ds.io.fetch_dataset` (item 27, the checksum-verified multi-mirror fetch both
-`air_quality` and `adult_income` had hand-rolled) and resolved items 28 (the
-string `"?"` sentinel — a documented one-liner) and 29 (the categorical↔target
-EDA view — parked, no code workaround to promote) without a build. A follow-on
-**goal-alignment pass** then closed the three standing gaps: the `eda`
-categorical↔target view (item 29 — `target_rate_by_category` /
-`plot_target_rate`); forecasting depth (**P16**, the second forecasting project
-`projects/sunspots` on a non-calendar solar cycle, which pulled
-`ds.features.add_lagged_features` and
-`ds.modeling.timeseries.forecast_recursive`); and text depth (**P17**, the second
-text project `projects/bbc_news`, multiclass topic classification, which pulled
-`ds.features.text_features`, gave `count_tokens` its first robust modeling
-consumer, and reaffirmed the model-side-vectorizer convention — item 18 struck,
-not built). The demand queue is empty again; the next step is an ordinary ninth
-demand loop. Forecasting and NLP/text are **committed, in-scope** use cases — the
-`nlp` extra, `count_tokens`, and `ds.modeling.timeseries` / `baseline` /
-`add_datetime_features` / `add_lagged_features` / `forecast_recursive` /
-`text_features` stay and are grown via demand loops, not trimmed. The doc also carries a
-goal evaluation of the whole toolkit, the friction backlogs from the real-data
-projects, and the settled-decision rationales this file's notes point to. Read
-it before starting new library work — and note its ordering rule: new library
-work should trace to a friction item from a real project, not a brainstormed
-candidate list.
+[`ROADMAP.md`](ROADMAP.md) is the **live** roadmap — kept small on purpose: the
+capability-per-stage table ("Where things stand"), the demand queue, and the
+working agreement. The plan of record (P1–P17, all done; **Release 0.2.0
+shipped**), the goal evaluation, the per-project friction backlogs (items 1–31),
+and the settled-decision rationales this file's notes point to now live in
+[`ROADMAP_ARCHIVE.md`](ROADMAP_ARCHIVE.md) — split out so a session isn't forced
+to read ~100 KB of history to start work.
+
+You do **not** need to read the archive in full before library work. Read
+`ROADMAP.md` (small) for the current state and demand queue; when you need the
+"why" behind a resolved/struck/parked item, grep the archive by item number
+(e.g. "item 27") or decision name. Forecasting and NLP/text are **committed,
+in-scope** use cases — the `nlp` extra, `count_tokens`, and
+`ds.modeling.timeseries` / `baseline` / `add_datetime_features` /
+`add_lagged_features` / `forecast_recursive` / `text_features` stay and are grown
+via demand loops, not trimmed. The ordering rule still governs: new library work
+should trace to a friction item from a real project, not a brainstormed candidate
+list.
 
 ## Engineering notes (hard-won gotchas)
 
@@ -161,7 +152,7 @@ Things that cost a round-trip to discover; save yourself the CI failure:
   `PipelineStep` likewise from `ds.pipeline`; only the stage-independent
   infrastructure (`Settings`, `get_settings`, `get_logger`, `seed_everything`)
   is re-exported from `src/ds/__init__.py`. This was the deliberate resolution
-  of the "API discoverability" question (see ROADMAP.md): a flat top-level
+  of the "API discoverability" question (see ROADMAP_ARCHIVE.md): a flat top-level
   re-export was rejected because the stage name is the teaching tool, and
   because re-exporting the stages would force `import ds` to eagerly load
   matplotlib/scikit-learn and risk cross-stage name collisions.
@@ -176,7 +167,7 @@ Things that cost a round-trip to discover; save yourself the CI failure:
   the canonical dev entry point (README/CLAUDE/CONTRIBUTING all assume it), so a
   second entry point would either duplicate the sequence (drift risk against the
   Makefile) or just call `make` (adding nothing). Don't re-add it — see
-  ROADMAP.md for the full rationale. `ds run` resolves a name against existing
+  ROADMAP_ARCHIVE.md for the full rationale. `ds run` resolves a name against existing
   `projects/` directories rather than building a path from it, keeping the same
   path-traversal discipline as `ds new`'s slug.
 - **Reuse across stages** rather than duplicating (e.g. `ds.viz` plots call
@@ -188,7 +179,7 @@ Things that cost a round-trip to discover; save yourself the CI failure:
   dance in a project. The seaborn-mirror projects (`titanic`/`nyc_taxis`/
   `diamonds`) deliberately keep their plain un-pinned "download if absent" (a few
   inline lines, below the aliasing bar); folding them in is parked until one
-  actually pulls an optional-checksum widening (see ROADMAP item 27).
+  actually pulls an optional-checksum widening (see ROADMAP_ARCHIVE.md item 27).
 - **Sanitize user-facing input paths.** `ds new`'s slug collapses any
   non-`[a-z0-9]` run to `_` precisely so a name like `../x` can't escape
   `projects/` — keep that discipline for anything that builds a filesystem path.
