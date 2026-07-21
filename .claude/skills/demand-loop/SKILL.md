@@ -200,6 +200,23 @@ uv run mkdocs build --strict   # only if you touched docs/
 Then commit to the task's feature branch (never `master`) with a descriptive
 message, and push with `git push -u origin <branch>`. Open a PR only if asked.
 
+### 10. Close the loop: surface the open items and recommend next
+
+End the session with a short handoff so the next one opens where this closed
+(its step 1 reads exactly what you write here). This is advisory — **build
+nothing**; just present state and a recommendation:
+
+- **What this loop shipped** — the project, the one library change (if any), and
+  the honest headline result.
+- **Open items** — read them back, don't re-derive: the refreshed demand queue
+  and deprioritized-until-pulled list from `ROADMAP.md`, plus the parked friction
+  items in `ROADMAP_ARCHIVE.md` whose revisit triggers have *not* yet fired. Note
+  for each what would fire it (usually "a second project of shape X").
+- **Recommendation for the next loop** — either the next-thinnest surface (re-run
+  `scripts/consumer_matrix.py` and name it), or a parked item that is now one
+  project away from its trigger. Frame it as a starting point for the user to
+  steer, not a decision already made — the data shape is theirs to confirm.
+
 ## Gotchas that cost a CI round-trip
 
 These live in `CLAUDE.md`'s "Engineering notes" — the ones that bite in a loop:
