@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make check:*)", "Bash(make lint:*)", "Bash(make format:*)",
+      "Bash(make test:*)", "Bash(make typecheck:*)", "Bash(make docs:*)",
+      "Bash(uv sync:*)", "Bash(uv run pytest:*)", "Bash(uv run ruff:*)",
+      "Bash(uv run mypy:*)", "Bash(uv run mkdocs:*)", "Bash(uv lock:*)",
+      "Bash(ds version:*)", "Bash(ds run:*)", "Bash(ds new:*)",
+      "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)",
+      "Bash(git show:*)", "Bash(git branch:*)", "Bash(git fetch:*)",
+      "Bash(pre-commit run:*)"
+    ]
+  }
+}
