@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from cycler import cycler
 from matplotlib.axes import Axes
+from sklearn.metrics import precision_recall_curve, roc_curve
 
 from ds.eda import missing_value_report, target_rate_by_category
 from ds.evaluation import confusion_frame
@@ -219,6 +220,92 @@ def plot_confusion_matrix(
     return ax
 
 
+def plot_pr_curve(
+    y_true: Sequence[int],
+    y_score: Sequence[float],
+    *,
+    label: str | None = None,
+    ax: Axes | None = None,
+) -> Axes:
+    """Plot the precision–recall curve with its no-skill baseline.
+
+    The curve view that pairs with :func:`ds.evaluation.probability_metrics`'
+    ``average_precision`` the way :func:`plot_confusion_matrix` pairs with
+    :func:`ds.evaluation.confusion_frame`: it traces precision against recall
+    across every threshold, so the whole operating-point *sweep* is legible —
+    the finding on a rare-event target, where a single summary number hides the
+    trade you actually have to make. A dashed horizontal line marks the no-skill
+    floor (the positive rate, which is where a constant-score classifier sits),
+    and because it returns the Axes, a chosen operating point from
+    :func:`ds.evaluation.choose_threshold` can be scattered on top.
+
+    Args:
+        y_true: Ground-truth binary labels (0/1), the positive class coded 1.
+        y_score: Predicted probability of the positive class, aligned with
+            ``y_true``.
+        label: Legend label for the curve; omitted from the legend when ``None``
+            (the no-skill line always names itself).
+        ax: Existing Axes to draw on; a new figure is created when omitted.
+
+    Returns:
+        The Axes the curve was drawn on.
+    """
+    precision, recall, _ = precision_recall_curve(y_true, y_score)
+    prevalence = float(np.mean(np.asarray(y_true, dtype=float)))
+    ax = _resolve_ax(ax)
+    ax.plot(recall, precision, color=PALETTE[0], label=label)
+    ax.axhline(
+        prevalence, color="black", linestyle="--", linewidth=1.0, label="no skill (prevalence)"
+    )
+    ax.set_xlabel("recall")
+    ax.set_ylabel("precision")
+    ax.set_xlim(0.0, 1.0)
+    ax.set_ylim(0.0, 1.05)
+    ax.set_title("Precision–recall curve")
+    ax.legend()
+    return ax
+
+
+def plot_roc_curve(
+    y_true: Sequence[int],
+    y_score: Sequence[float],
+    *,
+    label: str | None = None,
+    ax: Axes | None = None,
+) -> Axes:
+    """Plot the ROC curve with its chance diagonal.
+
+    The companion to :func:`plot_pr_curve`, tracing the true-positive rate
+    against the false-positive rate across every threshold — the curve behind
+    :func:`ds.evaluation.probability_metrics`' ``roc_auc``. Its no-skill
+    reference is the diagonal (a classifier that ranks at chance). Under heavy
+    class imbalance prefer the PR curve: ROC is optimistic there because the
+    large true-negative mass keeps the false-positive rate low.
+
+    Args:
+        y_true: Ground-truth binary labels (0/1), the positive class coded 1.
+        y_score: Predicted probability of the positive class, aligned with
+            ``y_true``.
+        label: Legend label for the curve; omitted from the legend when ``None``
+            (the chance diagonal always names itself).
+        ax: Existing Axes to draw on; a new figure is created when omitted.
+
+    Returns:
+        The Axes the curve was drawn on.
+    """
+    fpr, tpr, _ = roc_curve(y_true, y_score)
+    ax = _resolve_ax(ax)
+    ax.plot(fpr, tpr, color=PALETTE[0], label=label)
+    ax.plot([0.0, 1.0], [0.0, 1.0], color="black", linestyle="--", linewidth=1.0, label="chance")
+    ax.set_xlabel("false positive rate")
+    ax.set_ylabel("true positive rate")
+    ax.set_xlim(0.0, 1.0)
+    ax.set_ylim(0.0, 1.05)
+    ax.set_title("ROC curve")
+    ax.legend()
+    return ax
+
+
 def plot_residuals(
     y_true: Sequence[float], y_pred: Sequence[float], *, ax: Axes | None = None
 ) -> Axes:
@@ -354,7 +441,9 @@ __all__ = [
     "plot_missingness",
     "plot_model_comparison",
     "plot_outliers",
+    "plot_pr_curve",
     "plot_residuals",
+    "plot_roc_curve",
     "plot_series",
     "plot_target_rate",
     "set_theme",

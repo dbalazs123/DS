@@ -527,6 +527,7 @@ keeps it out of the modeling path for exactly that reason.
 
 ```python
 from ds.evaluation import (
+    choose_threshold,
     classification_metrics,
     confusion_frame,
     per_class_metrics,
@@ -537,6 +538,7 @@ from ds.evaluation import (
 regression_metrics(y_true, y_pred)       # mae, rmse, r2
 classification_metrics(y_true, y_pred)   # accuracy, precision, recall, f1 (averaged)
 probability_metrics(y_true, y_score)     # roc_auc, average_precision, brier (from probabilities)
+choose_threshold(y_true, y_score)        # {threshold, precision, recall, f1} at an operating point
 confusion_frame(y_true, y_pred)          # labeled confusion matrix (true x predicted)
 per_class_metrics(y_true, y_pred)        # precision/recall/f1/support per class
 ```
@@ -561,6 +563,41 @@ model = LogisticRegression(max_iter=1000, class_weight="balanced").fit(x_train, 
 scores = model.predict_proba(x_test)[:, 1]
 probability_metrics(y_test, scores)      # roc_auc, average_precision, brier
 ```
+
+Reweighting is one way to handle imbalance; the other is to leave the loss alone
+and **tune the decision threshold**. When the task has an *operating point* — a
+screening budget like "catch at least 80% of the positives" — `choose_threshold`
+sweeps the precision–recall curve for it, on scores from a plain (un-reweighted)
+model. Choose the threshold on the *training* scores (or a validation split),
+never the test set, then apply it as `scores >= threshold`:
+
+```python
+model = LogisticRegression(max_iter=1000).fit(x_train, y_train)   # no class_weight
+train_scores = model.predict_proba(x_train)[:, 1]
+
+choose_threshold(y_train, train_scores)                              # F1-optimal (default)
+point = choose_threshold(y_train, train_scores,                     # a screening budget:
+                         criterion="target_recall", target=0.80)    # catch >=80% of positives
+test_scores = model.predict_proba(x_test)[:, 1]
+preds = [1 if s >= point["threshold"] else 0 for s in test_scores]
+```
+
+It raises if the target is unreachable rather than returning a phantom operating
+point, and it handles the `precision_recall_curve` off-by-one (the trailing
+point with no threshold) for you. Visualize the whole sweep — where the trade,
+not a single number, is the finding — with the paired curve plots:
+
+```python
+from ds.viz import plot_pr_curve, plot_roc_curve
+
+plot_pr_curve(y_test, test_scores)       # precision vs recall + dashed prevalence floor
+plot_roc_curve(y_test, test_scores)      # tpr vs fpr + chance diagonal
+```
+
+Both return the Axes, so a chosen operating point can be scattered onto the PR
+curve (`ax.scatter(point["recall"], point["precision"])`). Under heavy imbalance
+prefer the PR curve — ROC is optimistic there because the large true-negative
+mass keeps the false-positive rate low.
 
 With an int-coded target (the form the metric surface and
 `fit_baseline("majority")` are typed for), pass `labels=` to put the class
@@ -666,7 +703,9 @@ from ds.viz import (
     plot_missingness,
     plot_model_comparison,
     plot_outliers,
+    plot_pr_curve,
     plot_residuals,
+    plot_roc_curve,
     plot_series,
     plot_target_rate,
     set_theme,
@@ -677,6 +716,8 @@ plot_missingness(df)                     # bar chart of missing fractions
 plot_outliers(df)                        # bar chart of outlier counts per column
 plot_target_rate(df, "occupation", "y")  # per-level target rate, baseline line
 plot_confusion_matrix(y_true, y_pred)    # annotated heatmap (labels= names the ticks)
+plot_pr_curve(y_true, y_score)           # precision–recall curve + prevalence floor
+plot_roc_curve(y_true, y_score)          # ROC curve + chance diagonal
 plot_residuals(y_true, y_pred)           # residual-vs-predicted diagnostic
 plot_model_comparison(comparison)        # one metric across models, as bars
 plot_series(df["date"], df["amount"])    # one series over a time axis
@@ -687,8 +728,9 @@ compose into multi-panel figures. They pair with the `ds.eda`,
 `ds.preprocessing` and `ds.evaluation` helpers (`plot_missingness` visualizes
 `missing_value_report`, `plot_outliers` visualizes `flag_outliers`,
 `plot_target_rate` visualizes `target_rate_by_category`,
-`plot_confusion_matrix` visualizes `confusion_frame`, and
-`plot_model_comparison` visualizes `compare_models`).
+`plot_confusion_matrix` visualizes `confusion_frame`,
+`plot_pr_curve` / `plot_roc_curve` visualize the sweep behind
+`probability_metrics`, and `plot_model_comparison` visualizes `compare_models`).
 
 `plot_series` is the time-series workhorse: its `predictions=` mapping
 overlays dashed, named forecast lines over the same time axis, and its

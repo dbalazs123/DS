@@ -25,15 +25,15 @@ working set of the most-reached-for helpers. Built out so far:
 | Explore | `ds.eda` | `summarize`, `missing_value_report`, `top_correlations`, `target_rate_by_category` (per-level grouped target rate, the categorical read on the target) |
 | Feature | `ds.features` | `add_datetime_features` (selectable `features=` subset; opt-in `_elapsed_months` trend counter), `add_lagged_features` (autoregressive lag columns; per-entity via `group=` on a panel), `text_features` (char/word/word-length columns), `one_hot_encode`, `ordinal_encode`, `collapse_categories` (top-k + "other"), `scale_features`, `bin_column` + split-safe pairs `fit_one_hot_categories`/`apply_one_hot_encode`, `fit_ordinal_categories`/`apply_ordinal_encode`, `fit_topk_categories`/`apply_collapse_categories`, `fit_scale_params`/`apply_scale_features` |
 | Model | `ds.modeling` | `split_features_target`, `train_test_split_by_time`, `train_test_split_random` (shuffled, optionally stratified), `fit_baseline` (mean / majority / naive-last / seasonal-naive), `forecast_recursive` (recursive multi-step forecast from a lag-feature model), `save_model`/`load_model` (joblib persistence), `count_tokens` |
-| Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `probability_metrics` (threshold-free ROC-AUC / average precision / Brier for a rare-event target), `confusion_frame`, `per_class_metrics`, `cross_validate_by_time` (rolling origin; optionally re-fits a transform pipeline per fold via `make_pipeline`), `cross_validate_kfold` (optionally stratified; same `make_pipeline` re-fit), `compare_models` |
-| Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_target_rate` (per-level target rate + baseline line), `plot_confusion_matrix`, `plot_residuals`, `plot_model_comparison`, `plot_series` (composable series/forecast plot) |
+| Evaluate | `ds.evaluation` | `regression_metrics`, `classification_metrics`, `probability_metrics` (threshold-free ROC-AUC / average precision / Brier for a rare-event target), `choose_threshold` (PR-curve sweep for an F1-optimal or target-precision/recall operating point), `confusion_frame`, `per_class_metrics`, `cross_validate_by_time` (rolling origin; optionally re-fits a transform pipeline per fold via `make_pipeline`), `cross_validate_kfold` (optionally stratified; same `make_pipeline` re-fit), `compare_models` |
+| Visualize | `ds.viz` | `set_theme`, `plot_missingness`, `plot_outliers`, `plot_target_rate` (per-level target rate + baseline line), `plot_confusion_matrix`, `plot_pr_curve`/`plot_roc_curve` (operating-point curves + no-skill baseline), `plot_residuals`, `plot_model_comparison`, `plot_series` (composable series/forecast plot) |
 
 Supporting: `ds.pipeline` (a persistable fit-once/apply-many `Pipeline` over
 the `fit_*`/`apply_*` pairs, fitted in one call from a `FitStep` plan via
 `fit_pipeline`), `ds` CLI (`ds version`, `ds new`, `ds run`), a
 per-stage docs Guide with cross-stage recipes, a `test-extras` CI job,
 single-sourced version, and an extended project template. `projects/` holds the
-synthetic worked example (`_example`) and eleven **real-data** projects:
+synthetic worked example (`_example`) and twelve **real-data** projects:
 `nyc_taxis` (regression), `titanic` (binary classification), `flights`
 (forecasting), `diamonds` (multiclass classification), `sms_spam` (text /
 binary spam classification), `air_quality` (sensor gap-filling regression
@@ -42,28 +42,31 @@ classification), `sunspots` (autoregressive forecasting — the second
 forecasting project, on a non-calendar solar cycle), `bbc_news` (multiclass
 text topic classification — the second text project), `store_sales`
 (store × item daily-sales **panel** — the first multi-entity project, which
-pulled group-aware lags) and `bank_marketing` (term-deposit subscription —
+pulled group-aware lags), `bank_marketing` (term-deposit subscription —
 the first **imbalanced / rare-event** project, which pulled probabilistic
-evaluation metrics).
+evaluation metrics) and `mammography` (rare calcification screening — the
+second imbalanced project, which tunes the operating point and pulled
+`choose_threshold` + the ROC/PR curve plots).
 
 ## Demand queue (next up)
 
-The demand queue is **empty** — every friction item raised so far (items 1–38,
+The demand queue is **empty** — every friction item raised so far (items 1–41,
 in `ROADMAP_ARCHIVE.md`) is resolved, struck, or parked with a recorded revisit
-trigger. The eleventh demand loop (`bank_marketing`, the first **imbalanced /
-rare-event** project) is done: it pulled `ds.evaluation.probability_metrics`
-(threshold-free ROC-AUC / average precision / Brier) and recorded the rest of the
-rare-event friction (items 37–38). The next step is an ordinary **twelfth demand
-loop**: a new real-data project chosen by the grep-driven rule (grep which
-library surfaces still have no real consumer and pick the data shape that
-stresses the thinnest cluster by absence), whose friction regenerates the
-backlog. Deprioritized until a project pulls them: a **threshold-selection
-helper** `choose_threshold` in `ds.evaluation` (item 37 — a *second* imbalanced
-project needing a tuned operating point, not class reweighting, is the trigger),
-a **ROC / PR curve plot** in `ds.viz` (item 38 — a second probabilistic project
-wanting the curve, not the summary bar), a **panel-aware split / rolling-origin
-backtest** in `ds.modeling`/`ds.evaluation` (item 33/35 — a *second* panel
-project is the build trigger), a Cramér's-V / mutual-information categorical
+trigger. The twelfth demand loop (`mammography`, the **second** imbalanced /
+rare-event project) is done: it gave `probability_metrics` its second consumer
+and, by *tuning the operating point* rather than reweighting, fired the two items
+`bank_marketing` parked — pulling `ds.evaluation.choose_threshold` (item 37) and
+`ds.viz.plot_pr_curve` / `plot_roc_curve` (item 38), and recording the rest
+(items 39–41). The next step is an ordinary **thirteenth demand loop**: a new
+real-data project chosen by the grep-driven rule (grep which library surfaces
+still have no real consumer and pick the data shape that stresses the thinnest
+cluster by absence), whose friction regenerates the backlog. Deprioritized until
+a project pulls them: a **panel-aware split / rolling-origin backtest** in
+`ds.modeling`/`ds.evaluation` (items 33/35 — a *second* panel project is the
+build trigger), an **out-of-fold threshold calibration** helper (item 40 — a
+second project needing the operating point chosen under CV, not on train scores),
+an `apply_threshold` convenience (item 41 — a second consumer hand-rolling the
+`scores >= t` comprehension), a Cramér's-V / mutual-information categorical
 *ranker* (item 29's unbuilt sibling shape), a first-class `ds.pipeline` vectorize
 step (item 18 — only if a text project shows the model-side convention genuinely
 fails, which two now have not), more cookbook recipes, more CLI.

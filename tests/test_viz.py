@@ -16,7 +16,9 @@ from ds.viz import (
     plot_confusion_matrix,
     plot_missingness,
     plot_outliers,
+    plot_pr_curve,
     plot_residuals,
+    plot_roc_curve,
     plot_series,
     plot_target_rate,
 )
@@ -65,6 +67,24 @@ def test_plot_confusion_matrix_display_labels_name_the_ticks() -> None:
     assert [label.get_text() for label in ax.get_xticklabels()] == ["no", "yes"]
     assert [label.get_text() for label in ax.get_yticklabels()] == ["no", "yes"]
     assert len(ax.texts) == 4  # counts still annotated per cell
+
+
+def test_plot_pr_curve_draws_curve_and_prevalence_floor() -> None:
+    ax = plot_pr_curve([0, 0, 1, 1], [0.1, 0.4, 0.6, 0.9], label="model")
+    assert ax.get_xlabel() == "recall"
+    assert ax.get_ylabel() == "precision"
+    # A dashed no-skill line at the positive rate (2/4 = 0.5).
+    baseline = next(line for line in ax.get_lines() if line.get_linestyle() == "--")
+    assert baseline.get_ydata()[0] == pytest.approx(0.5)
+
+
+def test_plot_roc_curve_draws_curve_and_chance_diagonal() -> None:
+    ax = plot_roc_curve([0, 0, 1, 1], [0.1, 0.4, 0.6, 0.9])
+    assert ax.get_xlabel() == "false positive rate"
+    # The chance diagonal runs corner to corner.
+    diagonal = next(line for line in ax.get_lines() if line.get_linestyle() == "--")
+    assert list(diagonal.get_xdata()) == [0.0, 1.0]
+    assert list(diagonal.get_ydata()) == [0.0, 1.0]
 
 
 def test_plot_residuals_draws_points_and_zero_line() -> None:

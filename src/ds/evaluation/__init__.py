@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
+import numpy as np
 import pandas as pd
 from sklearn import metrics
 from sklearn.model_selection import KFold, StratifiedKFold
@@ -100,6 +101,94 @@ def probability_metrics(y_true: Sequence[int], y_score: Sequence[float]) -> dict
         "roc_auc": float(metrics.roc_auc_score(y_true, y_score)),
         "average_precision": float(metrics.average_precision_score(y_true, y_score)),
         "brier": float(metrics.brier_score_loss(y_true, y_score)),
+    }
+
+
+def choose_threshold(
+    y_true: Sequence[int],
+    y_score: Sequence[float],
+    *,
+    criterion: str = "f1",
+    target: float | None = None,
+) -> dict[str, float]:
+    """Pick a decision threshold from the precision–recall curve.
+
+    A probabilistic classifier scores each row; turning those scores into hard
+    0/1 predictions needs an operating point, and the default 0.5 is rarely the
+    right one on a rare-event target — there a model that is well *ranked*
+    (:func:`probability_metrics`) still predicts almost all-negative at 0.5, so
+    the threshold has to be *tuned*. This sweeps the precision–recall curve and
+    returns the operating point matching ``criterion``:
+
+    - ``"f1"`` — the threshold maximising F1 (the balanced default);
+    - ``"target_precision"`` — the threshold with the highest recall whose
+      precision is at least ``target`` (spend recall to hold a precision floor);
+    - ``"target_recall"`` — the threshold with the highest precision whose
+      recall is at least ``target`` (a screening budget: catch at least
+      ``target`` of the positives, as cheaply in precision as possible).
+
+    The fiddly part this encapsulates is the alignment
+    :func:`sklearn.metrics.precision_recall_curve` leaves to the caller: it
+    returns one more precision/recall point than it has thresholds (a trailing
+    ``precision=1``, ``recall=0`` point that corresponds to *no* threshold), so
+    indexing precision/recall by a threshold position off-by-one is a classic
+    silent bug. This drops that trailing point before searching.
+
+    Args:
+        y_true: Ground-truth binary labels (0/1), the positive class coded 1.
+        y_score: Predicted probability (or any monotonically increasing score)
+            of the positive class, aligned with ``y_true``.
+        criterion: ``"f1"`` (default), ``"target_precision"`` or
+            ``"target_recall"``.
+        target: The precision or recall floor in ``(0, 1]``; required for the
+            two ``target_*`` criteria and ignored for ``"f1"``.
+
+    Returns:
+        A dict with the chosen ``threshold`` and the ``precision``, ``recall``
+        and ``f1`` it achieves — ready to apply as ``y_score >= threshold`` and
+        to score alongside :func:`classification_metrics`.
+
+    Raises:
+        ValueError: If ``y_true`` carries only one class (a curve needs both);
+            if ``criterion`` is unknown; if a ``target_*`` criterion is given no
+            ``target`` in ``(0, 1]``; or if no threshold meets ``target``.
+    """
+    if len(set(y_true)) < 2:
+        raise ValueError("y_true must contain both classes to sweep a threshold; got one class")
+    precision, recall, thresholds = metrics.precision_recall_curve(y_true, y_score)
+    # precision_recall_curve returns len(thresholds) + 1 precision/recall points;
+    # the trailing (precision=1, recall=0) point has no threshold. Drop it so
+    # index i of every array refers to the same operating point (score >= t[i]).
+    precision, recall = precision[:-1], recall[:-1]
+    denominator = precision + recall
+    f1 = np.divide(
+        2.0 * precision * recall,
+        denominator,
+        out=np.zeros_like(precision),
+        where=denominator > 0,
+    )
+
+    if criterion == "f1":
+        index = int(np.argmax(f1))
+    elif criterion in ("target_precision", "target_recall"):
+        if target is None or not 0.0 < target <= 1.0:
+            raise ValueError(f"{criterion} needs a target in (0, 1], got {target!r}")
+        if criterion == "target_precision":
+            floor, maximise = precision, recall
+        else:
+            floor, maximise = recall, precision
+        eligible = np.flatnonzero(floor >= target)
+        if eligible.size == 0:
+            raise ValueError(f"no threshold reaches {criterion.split('_')[1]} >= {target}")
+        index = int(eligible[np.argmax(maximise[eligible])])
+    else:
+        raise ValueError(f"unknown criterion {criterion!r}")
+
+    return {
+        "threshold": float(thresholds[index]),
+        "precision": float(precision[index]),
+        "recall": float(recall[index]),
+        "f1": float(f1[index]),
     }
 
 
@@ -410,6 +499,7 @@ def compare_models(
 
 __all__ = [
     "MetricsFunction",
+    "choose_threshold",
     "classification_metrics",
     "compare_models",
     "confusion_frame",
