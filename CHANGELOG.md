@@ -7,13 +7,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
-- `tests/test_roadmap_size.py`: a size-budget gate that fails CI if `ROADMAP.md`
-  grows past its line budget (currently 120), turning the "history goes to the
-  archive, not the live roadmap" convention into an enforced invariant so the
-  file can't silently re-bloat over future demand loops. Pairs with a written
-  write-side rule in `ROADMAP.md`'s working agreement and `CLAUDE.md`'s roadmap
-  section (append new backlogs and completed plan-of-record entries to
-  `ROADMAP_ARCHIVE.md`, continuing the item numbering).
+- `tests/test_roadmap_size.py`: size-budget gates that fail CI if the
+  always-read docs grow past their line budgets — `ROADMAP.md` (120) and
+  `CLAUDE.md` (300) — turning the "history goes to the archive, not the
+  always-read files" convention into an enforced invariant so they can't
+  silently re-bloat over future demand loops. Pairs with written write-side
+  rules in `ROADMAP.md`'s working agreement and `CLAUDE.md` (append new backlogs
+  and completed plan-of-record entries to `ROADMAP_ARCHIVE.md`, continuing the
+  item numbering).
+- `CLAUDE.md` "Working efficiently in a session" section: concise, durable
+  guidance for keeping per-session context cheap without cutting quality — read
+  narrowly (ranged reads/`Grep` over whole-file reads), grep `ROADMAP_ARCHIVE.md`
+  by item number rather than reading it whole, keep command output lean, fan out
+  broad searches to an `Explore`/`general-purpose` subagent, and don't grow the
+  always-read files with per-project narrative.
 - `projects/bbc_news`: ninth **real-data** project (P17 — the second **text**
   one), a multiclass topic classifier (business/entertainment/politics/sport/tech)
   over the 2,225 BBC News articles, with the text-feature surface it pulled served

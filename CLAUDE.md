@@ -229,3 +229,22 @@ create a descriptive branch from the latest default branch.
 - **Data science hygiene:** keep raw data out of version control, make analyses
   reproducible (pin dependencies, seed randomness where relevant), and separate
   reusable library code from one-off exploratory notebooks.
+
+## Working efficiently in a session
+
+Context is a budget; these habits keep sessions cheap without cutting quality:
+
+- **Read narrowly.** Prefer `Grep` and ranged reads (`offset`/`limit`) over
+  whole-file reads; reserve full reads for short files. Never re-read a file you
+  just edited — the edit tools already confirm success.
+- **Grep the archive; don't read it whole.** `ROADMAP_ARCHIVE.md` is large and
+  history-only — find what you need by item number (`item 27`) or decision name.
+- **Keep command output lean.** `git log --oneline`, `pytest -q`, targeted CI
+  logs; pipe long output through `tail`/`head` when you only need the verdict.
+- **Fan out to a subagent.** For broad "where is X used / which project lacks a
+  consumer for Y" sweeps, dispatch an `Explore` (or `general-purpose`) subagent
+  so the file dumps stay in its context and only the answer returns to yours.
+- **Don't bloat the always-read files.** This `CLAUDE.md` and `ROADMAP.md` load
+  every session, so their size is a recurring cost. Put per-project narrative and
+  resolved history in `ROADMAP_ARCHIVE.md` / `CHANGELOG.md`, not here. A
+  size-budget test (`tests/test_roadmap_size.py`) enforces the ceiling on both.
