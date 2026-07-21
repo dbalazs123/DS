@@ -376,6 +376,7 @@ def add_lagged_features(
     column: str,
     lags: Sequence[int],
     *,
+    group: str | Sequence[str] | None = None,
     dropna: bool = True,
 ) -> pd.DataFrame:
     """Add lagged copies of a column — the autoregressive features a forecaster needs.
@@ -389,24 +390,41 @@ def add_lagged_features(
     because lags are taken by row position (exactly like
     :meth:`pandas.Series.shift`); sort by the time axis first.
 
-    The first ``max(lags)`` rows have no complete history and so carry ``NaN``
-    lag values. With ``dropna=True`` (the default) they are dropped and the index
-    reset, leaving a frame ready to fit; pass ``dropna=False`` to keep them (e.g.
-    to stay aligned with another frame) and handle the warm-up gaps yourself.
+    On a **panel** — many series stacked in one frame (a store's daily sales
+    beneath another store's, several sensors, a cohort of patients) — a plain
+    by-position lag is wrong at every entity boundary: the first rows of one
+    series would read the *tail of the series above it* as their history. Pass
+    ``group`` (one column name or several) to take the lags **within** each
+    entity instead, via :meth:`pandas.core.groupby.GroupBy.shift`, so no value
+    ever crosses an entity edge. The frame must then be sorted by the time axis
+    *within* each group (sort by ``[*group, time_column]`` first); the lags
+    honor the frame's existing within-group row order exactly as the ungrouped
+    path honors its global row order.
+
+    The first ``max(lags)`` rows of the series — of *each* group when ``group``
+    is set — have no complete history and so carry ``NaN`` lag values. With
+    ``dropna=True`` (the default) they are dropped and the index reset, leaving a
+    frame ready to fit; pass ``dropna=False`` to keep them (e.g. to stay aligned
+    with another frame) and handle the warm-up gaps yourself.
 
     This is a *stateless* transform — a row's lags depend only on the rows
-    already beside it, nothing is learned from the frame — so, like
-    :func:`add_datetime_features`, it is safe to apply before a train/test split.
-    Forecasting past the end of the series, where later steps' lags are the
-    model's own earlier predictions, is
+    already beside it (within its group), nothing is learned from the frame — so,
+    like :func:`add_datetime_features`, it is safe to apply before a train/test
+    split. Forecasting past the end of a single series, where later steps' lags
+    are the model's own earlier predictions, is
     :func:`ds.modeling.timeseries.forecast_recursive`.
 
     Args:
-        df: The source DataFrame, already sorted into time order.
+        df: The source DataFrame, already sorted into time order (within each
+            group when ``group`` is set).
         column: The column to lag.
         lags: The positive lag offsets to emit (a lag of ``k`` looks ``k`` rows
             back). Duplicates are ignored and columns come out in ascending lag
             order regardless of the order requested.
+        group: One column name, or a sequence of them, identifying the entity
+            each row belongs to. When given, lags are taken independently within
+            each group so history never bleeds across an entity boundary. When
+            ``None`` (the default) the whole frame is treated as one series.
         dropna: If ``True`` (default), drop the warm-up rows whose lag columns
             are ``NaN`` and reset the index.
 
@@ -414,7 +432,7 @@ def add_lagged_features(
         A new DataFrame with the ``<column>_lag_<k>`` columns added.
 
     Raises:
-        KeyError: If ``column`` is not present.
+        KeyError: If ``column`` or any ``group`` column is not present.
         ValueError: If ``lags`` is empty or names a non-positive lag.
     """
     if column not in df.columns:
@@ -424,10 +442,24 @@ def add_lagged_features(
         raise ValueError("lags must name at least one lag")
     if ordered_lags[0] < 1:
         raise ValueError("lags must be positive (a lag of k looks k rows back)")
+    if group is None:
+        group_columns: list[str] = []
+    elif isinstance(group, str):
+        group_columns = [group]
+    else:
+        group_columns = list(group)
+    for name in group_columns:
+        if name not in df.columns:
+            raise KeyError(name)
     out = df.copy()
     lag_columns = [f"{column}_lag_{k}" for k in ordered_lags]
-    for k, name in zip(ordered_lags, lag_columns, strict=True):
-        out[name] = out[column].shift(k)
+    if group_columns:
+        grouped = out.groupby(group_columns, sort=False)[column]
+        for k, name in zip(ordered_lags, lag_columns, strict=True):
+            out[name] = grouped.shift(k)
+    else:
+        for k, name in zip(ordered_lags, lag_columns, strict=True):
+            out[name] = out[column].shift(k)
     if dropna:
         out = out.dropna(subset=lag_columns).reset_index(drop=True)
     return out

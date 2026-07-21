@@ -4,7 +4,7 @@ Historical detail split out of [`ROADMAP.md`](ROADMAP.md) to keep the active
 roadmap small (it was read into context in full on every session). Nothing here
 is live plan — the current state and demand queue live in `ROADMAP.md`. This
 file is the durable record: the goal evaluation, the completed plan of record
-(P1–P17), the per-project friction backlogs (**items 1–31**, referenced by
+(P1–P18), the per-project friction backlogs (**items 1–35**, referenced by
 number from project code and `CHANGELOG.md`), and the settled-decision
 rationales that `CLAUDE.md`'s engineering notes point to. Grep it by item number
 or decision name when you need the "why" behind a resolved item.
@@ -529,6 +529,36 @@ The lesson is the ordering rule above: demand first.
   model. Held-out macro-F1 0.964 / accuracy 0.965 vs a length-only model (0.329 —
   the honest headline that the topic signal is in the *words*, length a modest
   supplement) and the majority class (0.077); CV macro-F1 0.957 ± 0.009.
+
+- **P18 — stress the first data *shape* no project had: a panel (multi-entity):
+  DONE.** `projects/store_sales` forecasts daily units sold across a store × item
+  panel — 50 entities (10 stores × the first 5 items) of the classic "Store Item
+  Demand" dataset, 2013–2017. Chosen by the grep-driven demand rule: every prior
+  project was single-entity, so the time-series surface had only ever seen one
+  series at a time. A panel breaks that assumption at exactly one place, and the
+  loop's single library change served it in the same batch (item 32):
+  - `ds.features.add_lagged_features(..., *, group=None)` (item 32) — lags taken
+    *within* each entity via a grouped `shift`, so history never bleeds across an
+    entity boundary. The ungrouped path lagged by row position over the whole
+    frame; stacking store 2 beneath store 1 made store 2's first rows read store
+    1's tail as their history — a silent correctness bug, not a convenience gap,
+    which is why it was fixed rather than parked. Clearly above the aliasing bar
+    (the no-bleed guarantee, warm-up handling *per group*, multi-key support).
+    `store_sales` is its first consumer, with a test asserting the boundary
+    never bleeds.
+
+  Full lifecycle on `ds` + scikit-learn: checksum-verified fetch
+  (`fetch_dataset`'s fifth consumer), boundary validation on the full 913k-row
+  file, panel selection + within-entity ordering, calendar features
+  (`add_datetime_features` day-of-week/month/elapsed-months) + the grouped lags,
+  a date-cutoff split (train 2013–2016, forecast 2017), a one-hot plan over entity
+  + calendar effects (`fit_pipeline`), a pooled `LinearRegression`, pipeline +
+  model persisted and the held-out window scored from the reloaded model. One-step
+  held-out 2017: pooled model MAE 5.27 / r² 0.894, beating the weekly-seasonal
+  naive (`sales_lag_7`, MAE 6.70) and naive-last (`sales_lag_1`, MAE 7.99)
+  references — the naive ordering itself the read that the day-of-week cycle
+  dominates. The rest of the panel's single-series friction (items 33–35) was
+  handled inline and recorded, not built — see the backlog below.
 
 ## Friction backlog (from `projects/nyc_taxis`)
 
@@ -1278,6 +1308,74 @@ composed one-step rolling-origin folds on the lagged frame first-try;
 and `plot_series` (the two-call history + forecast overlay, now with *two*
 prediction series) all composed as on `flights`; and `save_model`/`load_model`
 scored both forecasts from the reloaded model.
+
+## Friction backlog (from `projects/store_sales`)
+
+The tenth run of the demand loop, and the first on a **panel** (multi-entity)
+dataset — picked by the grep-driven rule for the data *shape* no project had
+(every prior project was one flat table or one univariate series). Numbering
+continues from the `sunspots` list. The load-bearing item was **served in the
+same demand loop** (a silent correctness bug, not a convenience gap); the rest
+had clean inline workarounds on a shared-calendar panel and are recorded, not
+built, in observed-pain order:
+
+32. ~~**`add_lagged_features` bleeds history across entity boundaries.**~~ —
+    **served in P18**: `ds.features.add_lagged_features(..., *, group=None)`. The
+    helper lagged by row position over the *whole* frame, so on a panel — many
+    series stacked in one frame — the first rows of each entity read the previous
+    entity's tail as their history. That is wrong output, not a missing
+    convenience, so it was fixed rather than parked as a one-liner: `group=` (one
+    key or several) takes the lags *within* each entity via a grouped `shift`, and
+    the reusable part is the guarantee that no value crosses a boundary plus
+    per-group warm-up dropping. `store_sales` is its first consumer, with a test
+    asserting store 2's first row carries no value bled from store 1.
+33. **A panel wants a date-*cutoff* split, not `train_test_split_by_time`'s row
+    fraction.** — *recorded, done inline.* `train_test_split_by_time` sorts one
+    series and holds out the last fraction of *rows*; on an interleaved panel that
+    straddles the boundary date across entities. A shared-calendar panel has a
+    clean workaround worth two lines — a `date < cutoff` mask cuts every entity at
+    the same instant — so the split was done inline (train 2013–2016, forecast
+    2017). The trigger for a library `cutoff=`/`group=` split variant is a second
+    panel project reaching for the same mask, or a panel whose entities *don't*
+    share a calendar (where the inline mask no longer suffices).
+34. **`assert_unique` guards a single column; a panel's key is composite.** —
+    *recorded, done inline.* The panel's uniqueness key is `(store, item, date)`;
+    `assert_unique` takes one column. A composite-key check is one
+    `df.duplicated(subset=[...])` line, below the aliasing bar — done inline in
+    `order_panel`. The trigger for widening `assert_unique` to accept a column
+    list is a second project hand-rolling the same composite-key guard.
+35. **No per-entity rolling-origin *backtest* — the parked harness now has one
+    consumer's demand.** — *recorded, not built.* `fit_baseline`,
+    `forecast_recursive` and `cross_validate_by_time` are all single-series; on a
+    panel the naive references needed no fitting (each entity's `sales_lag_1` /
+    `sales_lag_7` column *is* its naive-last / weekly-seasonal-naive one-step
+    forecast, so evaluation read them directly), and the held-out evaluation was
+    one-step-ahead. No grouped rolling-origin multi-step backtest was hand-rolled,
+    so a `ds.evaluation` panel-backtest harness still has demand but no second
+    consumer. This sharpens the sunspots item-31 note: the build trigger is a
+    *second* panel (or multi-step) project that hand-rolls the grouped rolling
+    evaluation — then the harness is built on first-consumer strength.
+
+Notes from the same run, for the record:
+
+- **A pooled panel model needs no impute/clip/scale step — the flights/sunspots
+  scope finding, a third time.** The only fitted state is the entity + calendar
+  one-hot vocabularies (`fit_pipeline`); the lags are stateless, the series are
+  complete (no impute), and OLS is scale-free (no scale). Recorded so the
+  single-step one-hot plan reads as intended, not as an omission.
+- **Entity identity rides in as one-hot fixed effects.** Store and item enter as
+  one-hot dummies (not raw integer codes, which OLS would misread as ordered), so
+  a single pooled `LinearRegression` carries per-entity intercepts — the standard
+  panel fixed-effects shape, built from the existing one-hot surface with no new
+  helper.
+
+Where the library did *not* fight: `fetch_dataset` took its fifth consumer;
+`add_datetime_features`'s scoped `features=` subset selected exactly the calendar
+terms a daily series uses; `fit_pipeline`/`one_hot_encode` fit the entity +
+calendar vocabularies on train and applied to both; `split_features_target`,
+`regression_metrics`/`compare_models`, `plot_residuals`/`plot_model_comparison`
+and the two-call `plot_series` overlay all composed as on `flights`; and
+`save_model`/`load_model` scored the held-out window from the reloaded model.
 
 Kept for the record — CLAUDE.md's engineering notes point here. Each was
 re-checked in the 2026-07 evaluation; verdicts inline.

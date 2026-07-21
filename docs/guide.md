@@ -227,6 +227,7 @@ from ds.features import (
 df = add_datetime_features(df, "date")               # year, month, dayofweek, hour, ...
 df = add_datetime_features(df, "date", features=["month", "elapsed_months"])  # scoped subset
 df = add_lagged_features(df, "y", [1, 2, 12])        # -> y_lag_1, y_lag_2, y_lag_12
+df = add_lagged_features(df, "y", [1, 7], group=["store", "item"])  # per-entity lags on a panel
 df = text_features(df, "body")                       # -> body_char_count, _word_count, _avg_word_length
 df = collapse_categories(df, ["zone"], k=15)         # top-15 levels + "other"
 df = one_hot_encode(df, ["category", "zone"])        # indicator columns
@@ -245,10 +246,12 @@ calendar epoch, so scoring later rows involves no learned origin.
 `add_lagged_features` is the autoregressive counterpart, for a series whose
 signal is its own recent history rather than its calendar position (momentum, a
 cycle no month captures): it adds `<column>_lag_<k>` columns for each lag, taken
-by row position, so sort by the time axis first. Like the datetime features it
-is stateless (safe before a split); to forecast *past* the end of the series,
-where later steps' lags are the model's own predictions, use
-[`forecast_recursive`](#model-dsmodeling).
+by row position, so sort by the time axis first. On a **panel** — many series
+stacked in one frame — pass `group=` (one or more entity-key columns) so the lags
+are taken *within* each entity and never bleed across a boundary; sort by
+`[*group, time]` first. Like the datetime features it is stateless (safe before a
+split); to forecast *past* the end of the series, where later steps' lags are the
+model's own predictions, use [`forecast_recursive`](#model-dsmodeling).
 
 `text_features` is the text counterpart: a stateless one-call expansion of a
 string column into `<column>_char_count`, `_word_count` and `_avg_word_length` —
