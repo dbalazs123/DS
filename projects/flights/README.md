@@ -41,7 +41,7 @@ forecast-vs-actual figure composed from two `plot_series` calls).
 
 This project exists to run the workspace's demand loop a third time. Friction
 it surfaced in the library was recorded as the backlog in
-[`ROADMAP.md`](../../ROADMAP.md); nothing was promoted in the same change
+[`ROADMAP_ARCHIVE.md`](../../ROADMAP_ARCHIVE.md); nothing was promoted in the same change
 (demand first, one step per change). That backlog has since been served
 (P7): the pipeline now consumes the helpers its own friction demanded —
 `plot_series`, the `features=` selection, and `elapsed_months` — with
@@ -71,7 +71,7 @@ equivalent held-out metrics.
   builds the persistable scoring `Pipeline`.
 - **Rolling-origin CV consumes an already-transformed frame.**
   `cross_validate_by_time` has no `make_pipeline` (the question parked in
-  ROADMAP item 9). Here that is provably harmless: the only fitted state is
+  ROADMAP_ARCHIVE.md item 9). Here that is provably harmless: the only fitted state is
   the month vocabulary, and every fold's training window spans more than a
   year, so per-fold re-fitting would re-learn the identical 12 calendar
   months. The demand trigger did *not* fire — recorded honestly in the

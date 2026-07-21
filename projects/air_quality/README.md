@@ -14,7 +14,7 @@ hours; predicting its reading from what the rest of the station saw that hour
 reference analyzers — is the task, so the held-out evaluation mimics
 back-filling an instrument outage from its neighbours. It was chosen
 deliberately, by first grepping which library surfaces still had no real
-consumer, and weighting the choice toward the open watch-list in `ROADMAP.md`:
+consumer, and weighting the choice toward the open watch-list in `ROADMAP_ARCHIVE.md`:
 
 - **Imputation at real severity, at last.** The biggest recorded coverage gap
   — imputation exercised only at titanic's severity, with diamonds and
@@ -28,7 +28,7 @@ consumer, and weighting the choice toward the open watch-list in `ROADMAP.md`:
   every measurement column as strings and nothing downstream complains. A
   dtype pin over the measurement columns makes that silent misparse loud —
   exactly the failure the guard exists for.
-- **A rolling-origin CV whose per-fold state genuinely varies.** `ROADMAP.md`
+- **A rolling-origin CV whose per-fold state genuinely varies.** `ROADMAP_ARCHIVE.md`
   item 9's parked question — `cross_validate_by_time(make_pipeline=...)` —
   had been waiting for a consumer whose per-fold fitted state actually
   changes. This project is it: the impute medians and scale parameters drift
@@ -59,7 +59,7 @@ standardize) on the training window → rolling-origin cross-validation
 
 This project exists to run the workspace's demand loop a sixth time. Friction
 it surfaced in the library is recorded as the backlog in
-[`ROADMAP.md`](../../ROADMAP.md); nothing is promoted in the same change
+[`ROADMAP_ARCHIVE.md`](../../ROADMAP_ARCHIVE.md); nothing is promoted in the same change
 (demand first, one step per change).
 
 ## Where the data comes from
@@ -71,7 +71,7 @@ verifies the download's sha256
 a partial earlier download cannot poison a later run. The mirrors are personal
 repositories; a silently drifted copy fails the checksum loudly rather than
 parsing strangely. This is the first project to need a verified fetch; the
-rationale is recorded in `ROADMAP.md`.
+rationale is recorded in `ROADMAP_ARCHIVE.md`.
 
 ## Modeling decisions worth knowing
 

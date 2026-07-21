@@ -68,7 +68,8 @@ cookbook and the full workflow.
 
 The core install is lean; heavier dependencies live behind extras, and an extra
 only carries dependencies that library code actually uses (planned directions,
-like a `timeseries` extra, live in [ROADMAP.md](ROADMAP.md) until code lands):
+like a `timeseries` extra, are recorded in
+[ROADMAP_ARCHIVE.md](ROADMAP_ARCHIVE.md) until code lands):
 
 ```bash
 uv sync --extra nlp          # tiktoken (accurate token counting)

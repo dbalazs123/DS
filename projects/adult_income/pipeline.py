@@ -17,7 +17,7 @@ categoricals expand into is the first real consumer of one-hot
 ``drop_first=True`` (the dummy-trap guard a linear model needs); the
 zero-inflated ``capital_gain`` / ``capital_loss`` are the first real consumer
 of ``flag_outliers`` on its *flag*-not-clip path (the extremes are signal, not
-error). Friction it surfaced in the library is recorded in ``ROADMAP.md`` —
+error). Friction it surfaced in the library is recorded in ``ROADMAP_ARCHIVE.md`` —
 that regenerated backlog is as much the deliverable as the model.
 
 The pipeline runs the full lifecycle on ``ds`` + scikit-learn alone: fetch →
@@ -153,7 +153,7 @@ def fetch_raw(settings: Settings) -> Path:
 
     A thin binding of this project's dataset (mirrors, filename, pinned digest)
     to :func:`ds.io.fetch_dataset`, which does the multi-mirror download,
-    checksum verification and cache re-verify (ROADMAP item 27's shared dance).
+    checksum verification and cache re-verify (ROADMAP_ARCHIVE.md item 27's shared dance).
 
     Args:
         settings: Resolves the raw-data directory.
@@ -181,7 +181,7 @@ def decode_sentinels(df: pd.DataFrame) -> pd.DataFrame:
     This is the second project in the workspace to decode an in-band missing
     sentinel (air_quality's was a numeric −200); the string flavor here is the
     same one-line ``replace`` on a different spelling, recorded against
-    ROADMAP item 26.
+    ROADMAP_ARCHIVE.md item 26.
 
     Args:
         df: Frame with the sentinel columns present.

@@ -25,7 +25,7 @@ consumer:
 - **A second consumer for the `labels=` display mapping.** Binary
   `{0: "ham", 1: "spam"}` on `confusion_frame` / `per_class_metrics` /
   `plot_confusion_matrix`, right after diamonds' five-grade first use — the
-  recurrence is recorded in `ROADMAP.md`.
+  recurrence is recorded in `ROADMAP_ARCHIVE.md`.
 - **A quote-laden headerless file at the boundary.** The raw TSV's double
   quotes are message text, not CSV quoting — under pandas' defaults two rows
   silently vanish into a neighbour. The fix (`header=None, names=...,
@@ -46,7 +46,7 @@ evaluate against the majority class and a keyword rule → visualize.
 
 This project exists to run the workspace's demand loop a fifth time. Friction
 it surfaced in the library is recorded as the backlog in
-[`ROADMAP.md`](../../ROADMAP.md); nothing is promoted in the same change
+[`ROADMAP_ARCHIVE.md`](../../ROADMAP_ARCHIVE.md); nothing is promoted in the same change
 (demand first, one step per change).
 
 ## Modeling decisions worth knowing
@@ -63,7 +63,7 @@ it surfaced in the library is recorded as the backlog in
   tiktoken installed but its vocabulary unreachable, every call re-attempted
   the download (~0.4 s), a ~35-minute stall over 5,000 messages — which this
   pipeline originally guarded with a hand-rolled probe
-  (`_resolve_token_counter`). Recorded as `ROADMAP.md` item 19 and served in
+  (`_resolve_token_counter`). Recorded as `ROADMAP_ARCHIVE.md` item 19 and served in
   P11: `count_tokens` now resolves its path once per process, so the guard is
   deleted and the pipeline calls the library directly.
 - **The fitted state is split across two artifacts.** The persisted ds

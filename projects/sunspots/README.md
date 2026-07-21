@@ -42,7 +42,7 @@ forecast-vs-actual figure composed from two `plot_series` calls).
 This project runs the workspace's demand loop an eighth time and its
 forecasting rotation a second time. Its friction — no autoregressive-feature
 helper, no recursive-forecast helper — is recorded in
-[`ROADMAP.md`](../../ROADMAP.md), and, because forecasting is a committed
+[`ROADMAP_ARCHIVE.md`](../../ROADMAP_ARCHIVE.md), and, because forecasting is a committed
 capability whose first project (`flights`) already delegated its model to raw
 scikit-learn, that friction was served in the same demand loop: the pipeline
 consumes `add_lagged_features` and `forecast_recursive` directly.

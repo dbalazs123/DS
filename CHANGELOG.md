@@ -7,6 +7,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `tests/test_roadmap_size.py`: a size-budget gate that fails CI if `ROADMAP.md`
+  grows past its line budget (currently 120), turning the "history goes to the
+  archive, not the live roadmap" convention into an enforced invariant so the
+  file can't silently re-bloat over future demand loops. Pairs with a written
+  write-side rule in `ROADMAP.md`'s working agreement and `CLAUDE.md`'s roadmap
+  section (append new backlogs and completed plan-of-record entries to
+  `ROADMAP_ARCHIVE.md`, continuing the item numbering).
 - `projects/bbc_news`: ninth **real-data** project (P17 — the second **text**
   one), a multiclass topic classifier (business/entertainment/politics/sport/tech)
   over the 2,225 BBC News articles, with the text-feature surface it pulled served
@@ -104,6 +111,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   test passes unchanged.
 
 ### Changed
+- Split `ROADMAP.md` into a lean live roadmap plus a history archive to control
+  per-session token cost: the file had grown to ~1,440 lines / ~98 KB and
+  `CLAUDE.md` told every session to read it before library work. `ROADMAP.md`
+  now keeps only the live parts — the capability-per-stage table ("Where things
+  stand"), the demand queue, and the working agreement (~75 lines). The
+  completed plan of record (P1–P17), the goal evaluation, the per-project
+  friction backlogs (items 1–31, still referenced by number from project code),
+  and the settled-decision rationales moved verbatim to the new
+  `ROADMAP_ARCHIVE.md`. Cross-references that pointed at the moved content
+  (`CLAUDE.md`'s Roadmap section and its API/CLI/fetch rationale pointers,
+  `README.md`'s planned-extras note, `pyproject.toml`'s extras comment) now
+  point at the archive; `CLAUDE.md`'s "read it before library work" instruction
+  became "read the small `ROADMAP.md`; grep the archive by item number when you
+  need the why." No plan or decision was changed — only relocated. The archive
+  lives at repo root (outside `docs/`) so `mkdocs build --strict` is unaffected.
 - Bumped pre-commit hook pins so they stop drifting from the dev environment:
   `ruff-pre-commit` v0.6.9 → v0.15.21 (now matching the `ruff` version
   `uv.lock` resolves, with the `dev` group's `ruff>=` floor raised to the same

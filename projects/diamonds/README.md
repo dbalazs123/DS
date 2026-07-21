@@ -47,7 +47,7 @@ proportions-only rule → visualize.
 
 This project exists to run the workspace's demand loop a fourth time.
 Friction it surfaced in the library is recorded as the backlog in
-[`ROADMAP.md`](../../ROADMAP.md); nothing is promoted in the same change
+[`ROADMAP_ARCHIVE.md`](../../ROADMAP_ARCHIVE.md); nothing is promoted in the same change
 (demand first, one step per change).
 
 ## Modeling decisions worth knowing
