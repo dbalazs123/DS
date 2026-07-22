@@ -62,6 +62,16 @@ user before a large build — the data shape and library scope are theirs to ste
 Find which surfaces are thinnest by *real consumers*, then pick a real dataset
 whose shape stresses the thinnest cluster by its absence.
 
+**Delegate the sweep to the `dataset-scout` subagent.** This step is read-only
+reconnaissance — run the consumer matrix, weigh the thinnest cluster vs. absent
+shape, and scout a sourceable dataset slate — so hand it to the scout (via the
+`Agent` tool, `subagent_type: dataset-scout`) and keep the *decision* here. It
+returns a ranked recommendation: the thinnest surface (with its consumer count
+and, if a parked item's trigger fires, the item number), a recommended shape, and
+2–3 reachability-checked dataset candidates each with the mirror project to copy.
+It never scaffolds or builds. If you'd rather run the sweep inline, the manual
+procedure is below — the scout just does exactly this:
+
 ```bash
 python .claude/skills/demand-loop/scripts/consumer_matrix.py
 ```
@@ -76,7 +86,8 @@ pair) is a candidate to stress a second time; an entirely *absent data shape*
 is the stronger pull. Cross-check against the "deprioritized until pulled" list
 at the end of `ROADMAP.md`'s demand queue.
 
-Then **recommend a specific dataset + data shape and confirm with the user**
+Whether the scout or you ran the sweep, the **decision stays here**: take its
+recommendation, then **confirm a specific dataset + data shape with the user**
 (shape and library scope are a real fork — use `AskUserQuestion`). Respect
 `ROADMAP.md`'s ordering rule: trace the choice to a thin surface, not a wishlist.
 
@@ -212,10 +223,12 @@ nothing**; just present state and a recommendation:
   and deprioritized-until-pulled list from `ROADMAP.md`, plus the parked friction
   items in `ROADMAP_ARCHIVE.md` whose revisit triggers have *not* yet fired. Note
   for each what would fire it (usually "a second project of shape X").
-- **Recommendation for the next loop** — either the next-thinnest surface (re-run
-  `scripts/consumer_matrix.py` and name it), or a parked item that is now one
-  project away from its trigger. Frame it as a starting point for the user to
-  steer, not a decision already made — the data shape is theirs to confirm.
+- **Recommendation for the next loop** — either the next-thinnest surface (the
+  `dataset-scout` subagent runs this sweep — delegate it, or re-run
+  `scripts/consumer_matrix.py` inline — and name it), or a parked item that is
+  now one project away from its trigger. Frame it as a starting point for the
+  user to steer, not a decision already made — the data shape is theirs to
+  confirm.
 
 ## Gotchas that cost a CI round-trip
 
